@@ -37,8 +37,16 @@ _Avoid_: 全文搜索
 ### 会话
 
 **Chat Draft**:
-当前 DSH 会话中尚未发送、可编辑的输入内容，Add to chat 把 Zotero 条目或引用加入这里。
+当前 DSH 会话中尚未发送、可编辑的输入内容，Add to chat 把一个 Zotero Context Chip 加入这里。
 _Avoid_: Message、消息
+
+**Zotero Context Chip**:
+输入框中代表一次 Zotero 选择（条目集合或 PDF 引文）的单个原子单元，只显示简短标签；模型实际收到的文本在发送时另行展开。
+_Avoid_: 标签、胶囊、内联文本、Markdown 块
+
+**Zotero Context Card**:
+消息、队列与待发回显中，把 Zotero Context Chip 的展开文本折叠成的单个单元。
+_Avoid_: 引用块、预览、附件
 
 **Ask**:
 把用户问题与相关 Zotero 条目或引用发送到当前会话的动作，不同于仅加入 Chat Draft。

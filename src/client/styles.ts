@@ -328,4 +328,53 @@ export const CSS = String.raw`
 
 /* app root hosts the toast; keep positioning stable in both pane sizes */
 .dshZotRoot { position: relative; height: 100%; min-height: 0; }
+
+/* --- message-side Zotero context card (ADR 0004) ------------------------ */
+.dshZotCtxCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 8px 1px 5px;
+  vertical-align: baseline;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0,0,0,0.14));
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.dshZotCtxCard:hover { background: color-mix(in srgb, currentColor 9%, transparent); }
+.dshZotCtxCard:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.dshZotCtxGlyph { flex: none; width: 12px; height: 12px; color: inherit; opacity: 0.75; }
+.dshZotCtxTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshZotCtxRaw { color: inherit; overflow-wrap: anywhere; white-space: pre-wrap; }
+.dshZotCtxFloat {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 7px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0,0,0,0.14));
+  border-radius: var(--dsw-radius-md, 10px);
+  background: var(--dsw-alias-bg-raised, var(--dsw-alias-bg-layer-2, #fff));
+  color: var(--dsw-alias-label-primary, inherit);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  pointer-events: none;
+}
+.dshZotCtxFloatHead { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dshZotCtxFloatList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.dshZotCtxFloatRow { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshZotCtxFloatMore { font-size: 11px; color: var(--dsw-alias-label-secondary, inherit); white-space: nowrap; }
 `

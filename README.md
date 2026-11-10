@@ -29,10 +29,12 @@ do the same on your behalf.
 - **PDF reader** — rendered in the sidebar with page navigation, zoom,
   page labels, user annotations, and agent highlights overlaid in the same
   layer; select text to quote it into the chat as a citation.
-- **Chat integration** — *Add to chat* inserts an item or a quoted PDF
-  passage into the current draft without sending it; *Ask* submits a
+- **Chat integration** — *Add to chat* inserts a compact **reference chip**
+  (one chip per selection, e.g. "3 Zotero items") into the current draft
+  without sending it; the full structured text is expanded at send time, so
+  the model still receives titles, creators and PDF keys. *Ask* submits a
   question about the selected item. Both use DSH's official session input
-  interface.
+  interface and fall back to plain text when the host lacks it.
 - **Bibliography export** — BibTeX and RIS via Zotero's own exporter,
   downloadable in the browser or written to the workspace as `.bib`.
 - **Metadata import** — create items from a DOI or arXiv identifier

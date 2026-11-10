@@ -27,6 +27,8 @@ import {
   type ItemsQueryParams,
 } from './api.ts'
 import { addToChat, ask, itemsDraftText, type ChatFace } from './chat-draft.ts'
+import { MAX_QUOTE_CHARS, selectionFromItems } from './context-chip.ts'
+import type { ChipRuntime } from './context-chip-source.ts'
 import { Icon } from './icons.tsx'
 import type { Translate } from './ui.tsx'
 import { AskBox, Empty, IconButton, errorText, viewErrorText, useDismiss, useDebouncedQuery, useViewData, type Notify } from './ui.tsx'
@@ -62,6 +64,10 @@ export interface ChatInfo {
   hasSession: boolean
   /** Input phase busy (`adjudicating`/`submitting`) — actions wait. */
   busy: boolean
+  /** Session id chip insertion is scoped to (`undefined` outside a session). */
+  readonly sessionId: string | undefined
+  /** Chip runtime, or `null` when the host lacks the extension points (ADR 0004 fallback). */
+  readonly chip: ChipRuntime | null
 }
 
 type ViewProps = { store: ZoteroStore; t: Translate; notify: Notify; chat: ChatInfo }
@@ -71,7 +77,7 @@ type ViewProps = { store: ZoteroStore; t: Translate; notify: Notify; chat: ChatI
 // ---------------------------------------------------------------------------
 
 /** Connection-state lamp + guidance per state (ready/not_installed/not_running/api_disabled/unsupported/error). */
-export function SetupView({ store, t, notify, showDetail = true }: ViewProps & { showDetail?: boolean }): JSX.Element {
+export function SetupView({ store, t, notify, chat, showDetail = true }: ViewProps & { showDetail?: boolean }): JSX.Element {
   const status = useViewData<StatusResponse>(store, 'status', (signal) => getStatus({ signal }))
   const data = status.data
   const state = data?.state ?? 'unknown'
@@ -206,6 +212,9 @@ export function SetupView({ store, t, notify, showDetail = true }: ViewProps & {
           )}
         </>
       )}
+      {/* ADR 0004 degraded path: without the chip source the full text is still
+          inserted, so the card explains what is missing instead of hiding it. */}
+      {chat.chip === null && <p className="dshZotSetupMeta dshZotSmall">{t('setup.chipUnavailable')}</p>}
     </div>
   )
 }
@@ -294,12 +303,26 @@ function ItemListView(props: ViewProps & { library: LibraryId; list: ItemSummary
     setWriting(true)
     void (async () => {
       try {
-        const outcome = await addToChat(chat.face, itemsDraftText(chosen, library))
-        if (outcome === 'unavailable') {
-          notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+        if (chat.chip === null) {
+          // No chip source on this host: keep the old fixed-format draft write.
+          const outcome = await addToChat(chat.face, itemsDraftText(chosen, library))
+          if (outcome === 'unavailable') {
+            notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+            return
+          }
+          notify(t('chat.addedToChat'))
           return
         }
-        notify(t('chat.addedToChat'))
+        const outcome = await chat.chip.insert(selectionFromItems(chosen, library), chat.sessionId, chat.face)
+        if (outcome === 'inserted' || outcome === 'fallback') {
+          notify(t('chat.addedToChat'))
+          return
+        }
+        if (outcome === 'too-long') {
+          notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+          return
+        }
+        notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
       } finally {
         writingRef.current = false
         setWriting(false)
@@ -336,12 +359,23 @@ function ItemListView(props: ViewProps & { library: LibraryId; list: ItemSummary
               closeLabel={t('common.close')}
               onClose={() => setAsking(false)}
               onSend={(question) => {
-                const outcome = ask(chat.face, question, chosen, library)
-                if (outcome === 'unavailable') {
-                  notify(t('chat.unavailable'), 'error')
+                if (chat.chip === null) {
+                  const outcome = ask(chat.face, question, chosen, library)
+                  if (outcome === 'unavailable') {
+                    notify(t('chat.unavailable'), 'error')
+                    return
+                  }
+                  setSelected([])
                   return
                 }
-                setSelected([])
+                void chat.chip
+                  .ask(question, selectionFromItems(chosen, library), chat.sessionId, chat.face)
+                  .then((outcome) => {
+                    if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                    else if (outcome === 'too-long') notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+                    else setSelected([])
+                  })
+                  .catch(() => notify(t('chat.unavailable'), 'error'))
               }}
             />
           ) : (
@@ -874,12 +908,26 @@ export function ItemDetailView(props: ViewProps & { route: Extract<Route, { view
     setWriting(true)
     void (async () => {
       try {
-        const outcome = await addToChat(chat.face, itemsDraftText([item], route.library))
-        if (outcome === 'unavailable') {
-          notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+        if (chat.chip === null) {
+          // No chip source on this host: keep the old fixed-format draft write.
+          const outcome = await addToChat(chat.face, itemsDraftText([item], route.library))
+          if (outcome === 'unavailable') {
+            notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+            return
+          }
+          notify(t('chat.addedToChat'))
           return
         }
-        notify(t('chat.addedToChat'))
+        const outcome = await chat.chip.insert(selectionFromItems([item], route.library), chat.sessionId, chat.face)
+        if (outcome === 'inserted' || outcome === 'fallback') {
+          notify(t('chat.addedToChat'))
+          return
+        }
+        if (outcome === 'too-long') {
+          notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+          return
+        }
+        notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
       } finally {
         writingRef.current = false
         setWriting(false)
@@ -937,8 +985,18 @@ export function ItemDetailView(props: ViewProps & { route: Extract<Route, { view
               closeLabel={t('common.close')}
               onClose={() => setAsking(false)}
               onSend={(question) => {
-                const outcome = ask(chat.face, question, [item], route.library)
-                if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                if (chat.chip === null) {
+                  const outcome = ask(chat.face, question, [item], route.library)
+                  if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                  return
+                }
+                void chat.chip
+                  .ask(question, selectionFromItems([item], route.library), chat.sessionId, chat.face)
+                  .then((outcome) => {
+                    if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                    else if (outcome === 'too-long') notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+                  })
+                  .catch(() => notify(t('chat.unavailable'), 'error'))
               }}
             />
           )}

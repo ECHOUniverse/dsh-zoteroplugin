@@ -63,6 +63,10 @@ const chunkSource = readFileSync(new URL('../lib/client.pdf.js', import.meta.url
 const requireTable = {
   react: React,
   'react/jsx-runtime': jsxRuntime,
+  // The client bundle's card renders its hover surface through a portal; the
+  // shell seeds react-dom for every bundle (`PLATFORM_MODULES`), so the smoke
+  // table must mirror it. The stub is only reached at render time.
+  'react-dom': { createPortal: (node) => node },
 }
 const chunkRegistrations = []
 const chunkWindow = {

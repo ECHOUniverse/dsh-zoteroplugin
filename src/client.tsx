@@ -19,7 +19,12 @@
  *    `inputActions` standard prop of this slot (DSH `sidebar.right.pane.tab`
  *    contract; see `client/chat-draft.ts` for the evidence). The face is used
  *    defensively: when no session scope is live the buttons are disabled —
- *    there is no clipboard fallback and no silent send.
+ *    there is no clipboard fallback and no silent send; and
+ * 6. when the host offers the chip extension points (`inputTriggers`,
+ *    `conversation`, `sessions`), registers the `@` Zotero Context Chip source
+ *    and its message-side card (ADR 0004), exposing one {@link ChipRuntime}
+ *    through the chat context — views keep the old `insertText` path as the
+ *    documented fallback.
  *
  * The PDF reader ships in a separate lazy chunk (`client.pdf.js`, built from
  * `src/client-pdf.tsx`): opening a reader route loads it through the
@@ -32,8 +37,10 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { PLUGIN_NAME, PLUGIN_VERSION, type ViewEvent } from './shared/protocol.ts'
-import { connectViewEvents, getStatus, type ViewStreamHandle } from './client/api.ts'
+import { connectViewEvents, getItem, getStatus, type ViewStreamHandle } from './client/api.ts'
 import { chatFaceFrom, type ChatFace } from './client/chat-draft.ts'
+import { registerContextCard } from './client/context-card.tsx'
+import { currentChipRuntime, installChipRuntime, registerContextChipSource, type ChipHost, type ChipServices } from './client/context-chip-source.ts'
 import { DICTIONARIES } from './client/i18n.ts'
 import { GuideLibraryIcon } from './client/guide-icon.tsx'
 import { Icon } from './client/icons.tsx'
@@ -79,6 +86,18 @@ interface ClientContext {
       }[]
     }): () => void
   }
+  /**
+   * Optional capability injection (ADR 0004 / §6 "接入方式"): the chip asks for
+   * the conversation services it needs and receives a child context once they
+   * exist. Absent on hosts without the optional-injection seat.
+   */
+  inject?(deps: string[], callback: (child: ClientContext & ChipHost) => void): unknown
+  /** `@` trigger registry (Zotero Context Chip source); optional by design. */
+  readonly inputTriggers?: ChipHost['inputTriggers']
+  /** Session-scoped reference insertion surface. */
+  readonly conversation?: ChipHost['conversation']
+  /** Session-scope resolver used by `conversation.input.for(...)`. */
+  readonly sessions?: ChipHost['sessions']
   effect(callback: () => void | (() => void), label?: string): () => void
 }
 
@@ -106,7 +125,7 @@ interface ZoteroTabProps {
 const store = new ZoteroStore()
 
 /** Chat context shared by all views of this tab instance. */
-const ChatContext = createContext<ChatInfo>({ face: null, hasSession: false, busy: false })
+const ChatContext = createContext<ChatInfo>({ face: null, hasSession: false, busy: false, sessionId: undefined, chip: null })
 
 /** Install the stylesheet once; returns its removal cleanup. */
 function installStyles(): () => void {
@@ -255,7 +274,19 @@ function ZoteroTab(props: ZoteroTabProps): JSX.Element {
   const chat = useMemo<ChatInfo>(() => {
     const face = chatFaceFrom(props)
     const busy = inputPhase === 'adjudicating' || inputPhase === 'submitting'
-    return { face, hasSession: typeof props.sessionId === 'string' && props.sessionId !== '', busy }
+    const sessionId = typeof props.sessionId === 'string' && props.sessionId !== '' ? props.sessionId : undefined
+    // `chip` is a live getter: the conversation services may arrive after this
+    // tab has rendered (`ctx.inject` callback), so a captured `null` would pin
+    // the legacy path forever. ADR 0004 degraded path is a `null` answer.
+    return {
+      face,
+      hasSession: sessionId !== undefined,
+      busy,
+      sessionId,
+      get chip() {
+        return currentChipRuntime()
+      },
+    }
   }, [props.inputActions, props.sessionId, inputPhase])
 
   // SSE view events drive navigation; dedupe happens in api + reducer.
@@ -329,4 +360,42 @@ export function apply(ctx: ClientContext): void {
       ),
     'zotero: tab body',
   )
+
+  // Stage three (ADR 0004): the Zotero Context Chip pair. `inject` is the
+  // optional seat for the conversation services; without it this very context
+  // is used, so a host that already exposes them still gets chips. Both the
+  // registration and the card are defensive — apply must never throw.
+  const services: ChipServices = { host: ctx as unknown as ChipHost, t }
+
+  const startChip = (child: ClientContext & ChipHost): void => {
+    const childCtx = child as unknown as ClientContext
+    const host = child as unknown as ChipHost
+    const dispose = registerContextChipSource({ host, t })
+    if (dispose !== null) childCtx.effect(() => dispose, 'zotero: context chip source')
+    registerContextCard(child as never, {
+      t,
+      getItem: (library, key) =>
+        getItem(library, key).then((detail) => ({ title: detail.title, creatorSummary: detail.creatorSummary, year: detail.year })),
+    })
+    // The source registration above owns the one live chip source; the runtime
+    // is told the outcome instead of probing (a probe would register the same
+    // `@` source twice and the host rejects duplicate pairs).
+    installChipRuntime({ host, t }, dispose !== null)
+  }
+
+  try {
+    if (typeof ctx.inject === 'function') {
+      ctx.inject(['inputTriggers', 'conversation', 'sessions', 'uiConversation'], (child) => {
+        try {
+          startChip(child)
+        } catch {
+          // No chip runtime: every entry point keeps the legacy draft write.
+        }
+      })
+    } else {
+      startChip(services.host as unknown as ClientContext & ChipHost)
+    }
+  } catch {
+    // Same degraded path: without the optional seat the tab still works.
+  }
 }

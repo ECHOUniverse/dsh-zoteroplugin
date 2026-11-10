@@ -20,6 +20,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { clearSessionHighlights, getAnnotations, getItem, saveHighlights, showInZotero } from './api.ts'
 import { addQuoteToChat, askQuote, type ChatFace, type QuoteRef } from './chat-draft.ts'
+import { MAX_QUOTE_CHARS, selectionFromQuote } from './context-chip.ts'
+import type { ChipRuntime } from './context-chip-source.ts'
 import { loadPdf, TextLayer, toViewport, type LoadedPdf, type PDFDocumentProxy } from './pdf.ts'
 import type { HighlightWire, ItemDetailWire, AnnotationsResponse } from '../shared/protocol.ts'
 import type { AnnotationWire, RectWire } from '../shared/protocol.ts'
@@ -281,7 +283,7 @@ export function Reader(props: {
   store: ZoteroStore
   t: Translate
   notify: Notify
-  chat: { face: ChatFace | null; busy: boolean; hasSession: boolean }
+  chat: { face: ChatFace | null; busy: boolean; hasSession: boolean; sessionId: string | undefined; chip: ChipRuntime | null }
   onBack: () => void
 }): JSX.Element {
   const { route, store, t, notify, chat, onBack } = props
@@ -654,9 +656,20 @@ export function Reader(props: {
                     setSelection(null)
                   }}
                   onSend={(question) => {
-                    const outcome = askQuote(chat.face, question, selection.quote)
-                    if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
-                    else notify(t('chat.sent'))
+                    if (chat.chip === null) {
+                      const outcome = askQuote(chat.face, question, selection.quote)
+                      if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                      else notify(t('chat.sent'))
+                      return
+                    }
+                    void chat.chip
+                      .ask(question, selectionFromQuote(selection.quote), chat.sessionId, chat.face)
+                      .then((outcome) => {
+                        if (outcome === 'unavailable') notify(t('chat.unavailable'), 'error')
+                        else if (outcome === 'too-long') notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+                        else notify(t('chat.sent'))
+                      })
+                      .catch(() => notify(t('chat.unavailable'), 'error'))
                   }}
                 />
               ) : (
@@ -665,10 +678,23 @@ export function Reader(props: {
                     type="button"
                     className="dshZotBtn dshZotGhost dshZotSmall"
                     onClick={() => {
-                      void addQuoteToChat(chat.face, selection.quote).then((outcome) => {
-                        if (outcome === 'unavailable') notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
-                        else notify(t('chat.addedToChat'))
-                      })
+                      if (chat.chip === null) {
+                        // No chip source on this host: keep the old quote draft write.
+                        void addQuoteToChat(chat.face, selection.quote).then((outcome) => {
+                          if (outcome === 'unavailable') notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+                          else notify(t('chat.addedToChat'))
+                        })
+                        setSelection(null)
+                        return
+                      }
+                      void chat.chip
+                        .insert(selectionFromQuote(selection.quote), chat.sessionId, chat.face)
+                        .then((outcome) => {
+                          if (outcome === 'inserted' || outcome === 'fallback') notify(t('chat.addedToChat'))
+                          else if (outcome === 'too-long') notify(t('chat.chipTooLong', { max: MAX_QUOTE_CHARS }), 'error')
+                          else notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error')
+                        })
+                        .catch(() => notify(chat.face === null ? t('chat.unavailable') : t('chat.addFailed'), 'error'))
                       setSelection(null)
                     }}
                   >

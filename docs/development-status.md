@@ -7,17 +7,20 @@
 > [implementation-spec.md](implementation-spec.md) §5.1 与 §9；架构决策见
 > [ADR 0001](adr/0001-local-api-only-zotero-10.md)、
 > [ADR 0002](adr/0002-dsh-two-halves-webserver-single-right-tab.md)、
-> [ADR 0003](adr/0003-differentiated-write-approval.md)。
+> [ADR 0003](adr/0003-differentiated-write-approval.md)、
+> [ADR 0004](adr/0004-reference-chip-for-zotero-context.md)。
 
 ## 当前状态总览
 
 **M0 骨架 + M1 数据层 + M2/M5/M6 宿主服务与安全路由 + M2/M3/M8 的右栏标签
-UI 与会话集成 + M4 PDF 阅读、全文/定位工具、会话高亮与保存高亮 + M7
-DOI/arXiv 元数据导入、PDF URL 下载、本机安装探测/启动与 `zotero://` deep
-link、`export_bib` 工作区写入与 `attach_pdf` 本地路径模式已落地。**
-已完成并经 vitest 全量验证（436 测试 / 24 文件，fake Zotero HTTP 服务器回放
+UI 与会话集成（旧 `insertText` 形态 + Zotero Context Chip/Card 的自动化层，
+ADR 0004；真机形态 V-13 待验收）+ M4 PDF 阅读、全文/定位工具、会话高亮与保存
+高亮 + M7 DOI/arXiv 元数据导入、PDF URL 下载、本机安装探测/启动与 `zotero://`
+deep link、`export_bib` 工作区写入与 `attach_pdf` 本地路径模式已落地。**
+已完成并经 vitest 全量验证（**509 测试 / 28 文件**，fake Zotero HTTP 服务器回放
 + 纯 reducer/API/投影/组件渲染 + 注入 fake 的元数据网络层/文件系统/spawn
-seam，全部通过；`npm run verify` 全绿）。
+seam，全部通过；`npm run verify` 全绿——`tsc --noEmit` 无错、build 成功
+（`lib/client.js` 216270 字节）、smoke 四条断言通过）。
 
 ## 实现范围明细
 
@@ -117,8 +120,9 @@ seam，全部通过；`npm run verify` 全绿）。
     内联，CMap/标准字体/wasm 经认证静态路由的 DataFactory）、页码输入/总页/
     上下页（就地替换路由）、缩放/适宽、印刷页标签、用户注释与 Agent 高亮
     （紫色）同层叠加与点击弹窗、注释侧栏（点击跳页）、加载进度/错误/扫描版
-    提示、划选文本出现「引用到对话 / 提问」（引用文本 + 标题 + 物理页/页标签
-    + item/PDF keys；引用走非破坏 `captureInsertion+insertText`）、会话高亮
+    提示、划选文本出现「引用到对话 / 提问」（引文文本 + 标题 + 物理页/页标签
+    + item/PDF keys；ADR 0004 起 chip-first 走 Zotero Context Chip，自动化层
+    已完成，旧非破坏 `captureInsertion+insertText` 保留为降级路径）、会话高亮
     保存到 Zotero / 移除会话高亮（不删 Zotero 注释）、导航返回。Agent 高亮
     变更经 SSE `highlights` 通知实时刷新。
   - **Library 视图**：个人 + 群组库切换、分类树（展开/上级自动展开/计数）、
@@ -137,7 +141,26 @@ seam，全部通过；`npm run verify` 全绿）。
   - **外观与可访问性**：全部颜色/圆角/字体读取 DSW `--dsw-*` 主题变量（跟随
     DSH 明暗主题），窄右栏与 fullscreen 均可用，控件带 aria-label/
     aria-checked/aria-expanded、焦点环、Escape 关菜单、Enter 打开行。
-- **会话集成（M8）**（`client/chat-draft.ts` + tab props）：
+- **会话集成（M8）**（`client/context-chip.ts` / `client/context-chip-source.ts` /
+  `client/context-card.tsx` + tab props；ADR 0004 **自动化层已完成，真机 V-13
+  待验收**）：
+  - **状态**：加入对话/提问不再向草稿插入固定格式多行文本，改为插入 DSH 原生
+    **Zotero Context Chip**；消息、队列与待发回显把同一份展开文本折叠成
+    **Zotero Context Card**。旧 `insertText` 形态保留为降级路径（`chat-draft.ts`
+    的投影仍是降级路径的文本来源）。实现落点：`context-chip.ts`（273 行，ref
+    编解码 + 模型文本投影 + 短标签 + 8k 上限）、`context-card.tsx`（673 行，
+    UserText 匹配规则 + 卡片渲染 + hover portal）、`context-chip-source.ts`（约
+    340 行，`@` source 注册 + codec + `insertReference` 插入 + 旧路径降级 +
+    `installChipRuntime`/`currentChipRuntime`）；入口 `src/client.tsx` 用可选
+    `ctx.inject(['inputTriggers','conversation','sessions','uiConversation'])`
+    接入，`ChatInfo` 增加 `sessionId` 与 live getter `chip`。接面与 seam 见
+    [implementation-spec.md](implementation-spec.md) §3、§6、§8、V-13。
+  - **实现期修正（属设计事实）**：① `ref` 必须带**主 PDF 附件 key**，否则模型
+    文本丢 `· PDF <key>` 标记——那是 `read_fulltext`/`find_in_pdf`/`cite` 的
+    唯一凭据；② `ChatInfo.chip` 是**按调用时读取的 getter**（`currentChipRuntime()`），
+    因为 `ctx.inject` 的服务可能晚于首次渲染到达，捕获 `null` 会把降级路径永久
+    钉死；③ `createChipRuntime` 接受 `options.available`，避免为探测可用性而
+    二次注册同一个 `@` source（宿主对重复 trigger/name 抛错，芯片会永远不可用）。
   - **官方接口（V-6 已消解）**：DSH `sidebar.right.pane.tab` 槽为
     `scope: "session"`，其 standardProps 含 `inputActions`（官方 InputActions
     面：`setDraft`（写草稿不发送）/`submit()`（queue 模式提交当前草稿）等）
@@ -146,17 +169,47 @@ seam，全部通过；`npm run verify` 全绿）。
     `dsh-client-ui-conversation`（`ctx.uiSession.provide({ props:
     ["inputActions"] })`，`SessionInputShell.actions`）。只读查阅，未复制
     代码。
-  - **Add to chat**：把固定格式条目文本（或阅读器划选的 PDF 段落：标题 +
-    物理页/页标签 + 引文）**加入**当前会话可编辑草稿且**不发送**；只走
-    `captureInsertion+insertText` 非破坏路径（保留用户已输入内容），await
-    真实 boolean 成功才提示已加入；插入面缺失、`insertText` 返回 false 或
-    reject 时**不改动草稿**并提示失败——没有 `setDraft` 替换回退，不丢失
-    用户输入。
-  - **Ask**：`setDraft(问题+条目/引文)` 后 `submit()` —— queue 模式（不
-    steer/不打断）；输入 phase 为 adjudicating/submitting 时按钮禁用。
+  - **芯片**：`ctx.inputTriggers.registerSource({trigger:'@', name:'zotero',
+    candidates:()=>[], onPick, codec})`，`appearance:'file'`，v1 不提供菜单
+    候选；插入经 `ctx.conversation.input.for(sessionScope).insertReference(
+    ref, span)`（span 取自 `captureInsertion()`，sessionScope 经
+    `ctx.sessions.scope(sessionId)` 解析）。芯片只显示短标签（「3 个 Zotero
+    条目」「1 处引文 · 第 22 页」）；`clipboardText` 与发送时
+    `codec.serialize(ref, signal)` 返回完整展开文本（与旧 `itemsDraftText`/
+    `quoteDraftText` 等价）；芯片为原子装饰节点，退格整体删除。
+  - **`ref` 自包含**：base64url 编码（条目：library/key/标题/作者/年份/主 PDF 附件 key；
+    引文：item/attachment/页码/引文正文），codec 为纯函数、不抛错，保证
+    Zotero 未运行与页面重载后仍可发送。PDF 引文同样走芯片（不再使用官方
+    `insertQuote`）；单次插入引文超过 8k 字符时拒绝并提示，不静默截断。
+  - **卡片**：注册 `ctx.uiConversation.userText` 规则（`register`，返回
+    disposer）与 keyed slot `conversation.user.text.node` 渲染器；卡片 hover
+    时按 key 现场查 Local API 取标题与作者/年份（带缓存），最多列 5 条 +
+    「还有 N 篇」，单条也折叠。
+  - **Ask**：先 `setDraft(问题文本)` → 插入芯片 → `submit()` —— queue 模式
+    （不 steer/不打断）；输入 phase 为 adjudicating/submitting 时按钮禁用。
+  - **入口**：条目列表多选底栏、条目详情动作行、PDF 阅读器划选浮层、Ask。
+  - **降级**：检测不到 `inputTriggers`/`conversation`/`uiConversation` 时回退
+    旧行为（`insertText` 插入完整多行文本，含 library/key/PDF key 结构化
+    标记），并在设置页连接卡追加一行「输入框内折叠不可用」；`engines.dsh`
+    不抬高，芯片与卡片需 **DSH ≥ 0.2.2-rc.1**。客户端半以 `ctx.inject([...])`
+    可选注入 + 特性检测接入，**不**写进 `package.json` 的 `dsh.client.inject`
+    硬依赖。
   - **无会话面时**（无 session scope）：按钮禁用并提示原因；**不降级为
-    剪贴板、不静默发送**。条目文本含 library/key/PDF key 结构化标记，与参考
-    实现格式兼容。
+    剪贴板、不静默发送**。
+  - **入口接线**：`views.tsx` 条目多选底栏与详情动作行的加入/提问四处
+    chip-first + `SetupView` 降级提示行；`reader.tsx` 划选「引用到对话 / 提问」；
+    `i18n.ts` zh/en 各 7 个 key（`chat.chip.items`、`chat.chip.quote`、
+    `chat.card.items`、`chat.card.quote`、`chat.card.more`、`chat.chipTooLong`、
+    `setup.chipUnavailable`）；`styles.ts` 追加卡片样式 49 行。
+  - **自动化验收（已完成）**：新增 `tests/context-chip.test.ts`（26）、
+    `tests/context-card.test.tsx`（24）、`tests/context-chip-source.test.ts`（19）
+    全绿；`npm run verify` 全绿（`tsc --noEmit` 无错、vitest **509 用例 / 28
+    文件**、build 成功 `lib/client.js` 216270 字节、smoke 四条断言通过——
+    `scripts/smoke.mjs` 的 require 表补 `react-dom` 平台桩，因为卡片 hover 用
+    `createPortal`；真实宿主 `PLATFORM_MODULES` 本就包含 react-dom）。
+  - **真机验收口径（V-13，待验收）**：允许插入草稿并截图，**绝不 `submit()`**
+    （不向外部模型发送测试消息）；待确认项见「尚未经真机验证」一节与规格
+    §5.1 V-13。
   - **SSE open_item/show_items/highlights**：驱动右栏导航（open_item→详情/
     Reader 指定页，show_items→Agent Items 视图，highlights→阅读器高亮层
     刷新）；api + reducer 双层 `seq` 去重；标签卸载关闭流并中止在途请求。
@@ -180,7 +233,7 @@ seam，全部通过；`npm run verify` 全绿）。
     或无会话目录时 fail closed 只返回文本；导出文本剥离 Zotero 本机路径。
   - **`attach_pdf` 本地路径模式**：与 URL/内联字节同审批序（拒绝→不读文件
     不落库），读取后统一 100 MiB/`%PDF-`/裸文件名校验。
-  - **测试**：新增 `zotero-install`（21：候选布局/版本读取/missing 列表/
+  - **测试**：新增 `zotero-install`（24：候选布局/版本读取/missing 列表/
     spawn 白名单与 argv/`zotero_not_installed`/URL 构造与拒绝）、
     `host-desktop`（11：session 门面缓存/路由 fence 与校验/客户端走私字段
     无效/install wire 不泄路径/ready 时不探测）、`workspace-export`（17：
@@ -197,7 +250,7 @@ profile 已备份至
 全文短语「elusive BC8 carbon」metadata 模式 0 条、everything 模式 2 条；条目
 详情与 PDF 注释打开正常；PDF（附件 FHPRDEEL）在右栏真实渲染 22 页，页码/
 缩放控件可见；「Add to chat」按正确 item key（CR6G7I2U）与 PDF key 插入当前
-会话**可编辑草稿且不发送**（验收用草稿已清理）。
+会话**可编辑草稿且不发送**（旧 `insertText` 形态；验收用草稿已清理）。
 
 已消解的验证点（对应规格 V 表，详见
 [implementation-spec.md](implementation-spec.md) §5.1）：V-1 右栏 tab 槽装载
@@ -206,12 +259,29 @@ profile 已备份至
 同源性——客户端 document-relative fetch/EventSource 全部命中宿主路由
 （health 200、真实读取文库 803 条），无认证直连 401 即预期 fence；V-10
 `require.async('./client.pdf.js')` 兄弟 chunk 在真机 boot graph 装载成功，
-PDF 阅读器真实渲染（22 页文档）；V-6 的 Add to chat 半边（草稿可编辑、未
-发送）真机确认，Ask 的 `setDraft+submit` 真实发送未触发（见下节）。
+PDF 阅读器真实渲染（22 页文档）；V-6 的 Add to chat 半边（旧 `insertText`
+形态：草稿可编辑、未发送）真机确认，Ask 的 `setDraft+submit` 真实发送未触发
+（见下节）；芯片/卡片形态为 V-13——自动化层已完成（`npm run verify` 全绿），
+真机形态仍待 DSH ≥ 0.2.2-rc.1 验收。
 
 ## 尚未经真机验证（当前仅自动化覆盖）
 
 - Ask 的真实发送（为避免向外部模型发送测试消息而主动跳过）。
+- Zotero Context Chip/Card 的真机形态（V-13；**自动化层已完成**并有 fake 覆盖，
+  但仍无真机证据，需 DSH ≥ 0.2.2-rc.1）：`ctx.inject` 是否真实存在及回调时序、
+  `ctx.sessions.scope(sessionId)` 返回值能否直接喂给
+  `ctx.conversation.input.for(actx)`、按钮触发（非 `@` 菜单）路径下
+  `insertReference` 的 span-CAS 是否稳定、`serializeDraftPrompt` 是否按契约调用
+  非内建 source 的 `codec.serialize`、`@` 菜单里空候选源是否只显示组标题、芯片
+  实际外观与整体退格、发送后消息里 UserText 卡片是否真的折叠；
+  验收口径 = 允许插入草稿并截图、**绝不 `submit()`**（不向外部模型发送测试
+  消息）。旧 `insertText` 形态的 Add to chat 已真机确认。
+  **芯片形态真机部分确认（2026-11-10）**：输入框内已真实出现引用芯片（单条
+  选择一枚，短标签「1 个 Zotero 条目」），即 `ctx.inject` 链路、
+  `inputTriggers.registerSource`、按钮路径 `captureInsertion()` +
+  `insertReference(ref, span)` 均已走通；仍待验证 `codec.serialize` 展开（需一次
+  真实发送）、消息侧 UserText 卡片折叠、`@` 菜单空候选组标题、退格整体删除、
+  复制为全文、页面重载后仍可发送。
 - 真实 Zotero 写入、授权对话框、高亮保存到 Zotero（写能力探测响应码与授权
   流程，V-3）；`/api/local/uploads` 上传端点（V-5）。
 - Zotero 响应头形状的显式复核（V-2——库读取真机成功间接说明
@@ -238,6 +308,10 @@ PDF 阅读器真实渲染（22 页文档）；V-6 的 Add to chat 半边（草�
 README/.d.ts/源码实现；Chat Draft/Ask 接面证据见会话集成一节（CLIENT_SLOT_API
 槽位目录与 `dsh-client-ui-conversation`/`dsh-client-ui-session` 源码，只读
 查阅）；M4 分包按 `dsh-client-modules` 已发布包的 chunk 契约（只读查阅）。
+Zotero Context Chip/Card 的接面（`inputTriggers` / `conversation.input` /
+`uiConversation`）依据 ADR 0004，属 DSH ≥ 0.2.2-rc.1 的面，已按该面实现（自动化
+层完成、有测试与降级路径），但接面形状与其时序仍待真机复核（V-13）；本机
+0.2.1-rc.2 包证据不覆盖该面。
 DSH 服务面以「本地结构化类型 + 防御式查找」接入；`defineTool` 以本地镜像
 产出与官方一致的注册形状（详见 `src/host/services.ts` 与
 `src/tools/define-tool.ts` 模块注释）。pdf.js 的 worker/CMap/字体/wasm 分发
@@ -288,13 +362,16 @@ DSH 服务面以「本地结构化类型 + 防御式查找」接入；`defineToo
 | 路径 | 内容 |
 | --- | --- |
 | `docs/implementation-spec.md` | 完整实施规格：功能清单、DSH/Zotero 契约、测试 seams、里程碑验收矩阵、非目标 |
-| `docs/adr/` | 三条架构决策（Local API+Zotero 10 / 双半+webServer+右栏单标签 / 差别化写审批） |
+| `docs/adr/` | 四条架构决策（Local API+Zotero 10 / 双半+webServer+右栏单标签 / 差别化写审批 / 会话上下文用 Zotero Context Chip） |
 | `src/index.ts` | 宿主半：配置 schema + HostRuntime 组装（routes + tools） |
 | `src/client.tsx` | 客户端半入口：tab 注册、session-scope props、SSE 接入、路由视图、reader chunk 懒加载（`require.async`） |
 | `src/client-pdf.tsx` | 懒加载 chunk 入口（`client.pdf.js`）：pdf.js + 阅读器，官方包内 chunk 契约注册 |
 | `src/client/store.ts` | 纯 reducer：导航栈/viewSeq 去重/highlights 状态意图/查询防抖提交/视图数据状态（vitest 直测） |
 | `src/client/api.ts` | 相对 fetch 客户端：错误 envelope、AbortSignal、SSE 重连去重、路径构建、PDF info/part/assets、highlights 写路由、导出下载 |
-| `src/client/chat-draft.ts` | Chat Draft/Ask 投影（条目 + PDF 划选引文）与官方 `inputActions` 面的防御式接入 |
+| `src/client/chat-draft.ts` | Chat Draft/Ask 旧投影（条目 + PDF 划选引文）与官方 `inputActions` 面的防御式接入；芯片形态下仅作降级路径的文本投影 |
+| `src/client/context-chip.ts` | M8 已完成（自动化层）：ref base64url 编解码 + 模型文本投影（保留 `· PDF <key>`）+ 短标签 + 8k 上限（纯函数，`tests/context-chip.test.ts` 26 例） |
+| `src/client/context-chip-source.ts` | M8 已完成（自动化层）：`@` source 注册 + codec + `insertReference` 插入 + 旧 `insertText` 降级 + `installChipRuntime`/`currentChipRuntime`（`tests/context-chip-source.test.ts` 19 例） |
+| `src/client/context-card.tsx` | M8 已完成（自动化层）：`uiConversation.userText` 规则匹配 + Zotero Context Card 渲染 + hover portal 按 key 查 Local API（`tests/context-card.test.tsx` 24 例） |
 | `src/client/pdf.ts` | 阅读器 chunk 内的 pdf.js 胶水：分块下载、主线程 worker、认证路由 DataFactory、视口矩形换算 |
 | `src/client/reader.tsx` | PDF 阅读器视图（canvas/文本层/页导航/缩放/注释与高亮层/侧栏/划选工具条/弹窗） |
 | `src/client/views.tsx` | Library/Agent Items/Item Detail/连接状态视图（reader 在 chunk 内） |
@@ -320,7 +397,7 @@ DSH 服务面以「本地结构化类型 + 防御式查找」接入；`defineToo
 | `src/zotero/client.ts` + `src/zotero/auth.ts` | Local API 客户端：探测/授权/写入/上传（M1） |
 | `src/zotero/library.ts` | 只读访问层：检索/分页/详情/注释/导出（M1） |
 | `src/zotero/writes.ts` | 写门面：批量/PATCH/三步上传（M1，测试覆盖） |
-| `tests/` | vitest 单测（fake Zotero HTTP 服务器回放 + reducer/API/投影/组件渲染 + M4 文本/提取/路由/工具 + M7 元数据/守卫/导入/安装探测/工作区写入 + 真实 cordis 晚绑定，436 用例 / 24 文件） |
+| `tests/` | vitest 单测（fake Zotero HTTP 服务器回放 + reducer/API/投影/组件渲染 + M4 文本/提取/路由/工具 + M7 元数据/守卫/导入/安装探测/工作区写入 + M8 芯片/卡片/降级 + 真实 cordis 晚绑定，509 用例 / 28 文件） |
 | `scripts/` | 客户端双入口打包、pdf.js 资产复制与冒烟脚本 |
 | `lib/pdfjs/`（构建产物） | 随发行物分发的 pdf.js 运行时资产：legacy 构建 + cmaps/standard_fonts/wasm + 许可文件 |
 | `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` | Apache-2.0 与第三方材料登记（含 M1/M4 移植归属、DOMPurify 与 pdfjs-dist 登记） |
