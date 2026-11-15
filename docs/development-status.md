@@ -17,10 +17,10 @@ UI 与会话集成（旧 `insertText` 形态 + Zotero Context Chip/Card 的自�
 ADR 0004；真机形态 V-13 待验收）+ M4 PDF 阅读、全文/定位工具、会话高亮与保存
 高亮 + M7 DOI/arXiv 元数据导入、PDF URL 下载、本机安装探测/启动与 `zotero://`
 deep link、`export_bib` 工作区写入与 `attach_pdf` 本地路径模式已落地。**
-已完成并经 vitest 全量验证（**509 测试 / 28 文件**，fake Zotero HTTP 服务器回放
+已完成并经 vitest 全量验证（**541 测试 / 30 文件**，fake Zotero HTTP 服务器回放
 + 纯 reducer/API/投影/组件渲染 + 注入 fake 的元数据网络层/文件系统/spawn
 seam，全部通过；`npm run verify` 全绿——`tsc --noEmit` 无错、build 成功
-（`lib/client.js` 216270 字节）、smoke 四条断言通过）。
+（`lib/client.js` 228338 字节）、smoke 四条断言通过）。
 
 ## 实现范围明细
 
@@ -138,6 +138,15 @@ seam，全部通过；`npm run verify` 全绿——`tsc --noEmit` 无错、build
   - **连接状态页**：ready / not_running / api_disabled / unsupported / error
     分状态中文/英文指引（Zotero 10+、开启 Local API 的操作步骤），一键重新
     检查。
+  - **顶栏连接指示器（胶囊 + 引导条）**（`client/status.ts` +
+    `client/connection.tsx`）：顶栏右侧胶囊（绿「已连接」/ 黄「未就绪」/ 红
+    「连接失败」）由 App 级唯一一次状态探测（`useConnection`，非 ready 时 5s
+    重探沿用原节奏）驱动，SetupView 与各视图共享同一份快照；非绿时顶栏下方
+    展开整宽引导条（一句话原因 + 打开 Zotero / 重新检测），绿色时高度 0 不占位；
+    胶囊点击进连接设置页（带返回）。**门禁调整**：host 不可达或首帧无结果才整屏
+    渲染引导页，探测结果已知但未 ready 时正常渲染视图，数据请求失败交 DataGate
+    重试。窄栏（container query ≤380px）胶囊收成圆点、title 兜底完整原因；PDF
+    阅读器顶栏控件已满，只加引导条不加胶囊。
   - **外观与可访问性**：全部颜色/圆角/字体读取 DSW `--dsw-*` 主题变量（跟随
     DSH 明暗主题），窄右栏与 fullscreen 均可用，控件带 aria-label/
     aria-checked/aria-expanded、焦点环、Escape 关菜单、Enter 打开行。
@@ -203,8 +212,8 @@ seam，全部通过；`npm run verify` 全绿——`tsc --noEmit` 无错、build
     `setup.chipUnavailable`）；`styles.ts` 追加卡片样式 49 行。
   - **自动化验收（已完成）**：新增 `tests/context-chip.test.ts`（26）、
     `tests/context-card.test.tsx`（24）、`tests/context-chip-source.test.ts`（19）
-    全绿；`npm run verify` 全绿（`tsc --noEmit` 无错、vitest **509 用例 / 28
-    文件**、build 成功 `lib/client.js` 216270 字节、smoke 四条断言通过——
+    全绿；`npm run verify` 全绿（`tsc --noEmit` 无错、vitest **541 用例 / 30
+    文件**、build 成功 `lib/client.js` 228338 字节、smoke 四条断言通过——
     `scripts/smoke.mjs` 的 require 表补 `react-dom` 平台桩，因为卡片 hover 用
     `createPortal`；真实宿主 `PLATFORM_MODULES` 本就包含 react-dom）。
   - **真机验收口径（V-13，待验收）**：允许插入草稿并截图，**绝不 `submit()`**
@@ -397,7 +406,7 @@ DSH 服务面以「本地结构化类型 + 防御式查找」接入；`defineToo
 | `src/zotero/client.ts` + `src/zotero/auth.ts` | Local API 客户端：探测/授权/写入/上传（M1） |
 | `src/zotero/library.ts` | 只读访问层：检索/分页/详情/注释/导出（M1） |
 | `src/zotero/writes.ts` | 写门面：批量/PATCH/三步上传（M1，测试覆盖） |
-| `tests/` | vitest 单测（fake Zotero HTTP 服务器回放 + reducer/API/投影/组件渲染 + M4 文本/提取/路由/工具 + M7 元数据/守卫/导入/安装探测/工作区写入 + M8 芯片/卡片/降级 + 真实 cordis 晚绑定，509 用例 / 28 文件） |
+| `tests/` | vitest 单测（fake Zotero HTTP 服务器回放 + reducer/API/投影/组件渲染 + M4 文本/提取/路由/工具 + M7 元数据/守卫/导入/安装探测/工作区写入 + M8 芯片/卡片/降级 + 连接状态指示器 + 真实 cordis 晚绑定，541 用例 / 30 文件） |
 | `scripts/` | 客户端双入口打包、pdf.js 资产复制与冒烟脚本 |
 | `lib/pdfjs/`（构建产物） | 随发行物分发的 pdf.js 运行时资产：legacy 构建 + cmaps/standard_fonts/wasm + 许可文件 |
 | `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` | Apache-2.0 与第三方材料登记（含 M1/M4 移植归属、DOMPurify 与 pdfjs-dist 登记） |

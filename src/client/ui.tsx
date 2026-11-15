@@ -126,6 +126,18 @@ export interface UseViewResult<T> {
 }
 
 /**
+ * Whether the effect may serve the store's cached snapshot instead of
+ * fetching. `reload()` only bumps the hook's nonce, so the cache must not
+ * short-circuit a nonce-driven refetch: otherwise a cached `ready` state
+ * (e.g. the Setup view's `not_running` probe result) would make the refresh
+ * affordance a permanent no-op. Exported for the regression test
+ * (`tests/client-ui-status.test.ts`).
+ */
+export function shouldServeCachedView(view: ViewState | undefined, reloadNonce: number): boolean {
+  return reloadNonce === 0 && view?.phase === 'ready'
+}
+
+/**
  * Bind one view key to a loader. Triggers on mount and whenever the key
  * changes; results are dispatched through the store with generation tokens so
  * stale responses never overwrite newer ones.
@@ -139,8 +151,10 @@ export function useViewData<T>(store: ZoteroStore, key: string | null, load: (si
 
   useEffect(() => {
     if (key === null) return
+    // Only the first mount may be served from the store cache; a reload()
+    // bumps the nonce and must always refetch (see shouldServeCachedView).
     const existing = store.get().views[key]
-    if (existing !== undefined && existing.phase === 'ready') return // cached until reload()
+    if (shouldServeCachedView(existing, nonce)) return
     const token = store.nextToken()
     const controller = new AbortController()
     controllerRef.current = controller

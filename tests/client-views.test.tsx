@@ -6,6 +6,8 @@
 import { describe, expect, it } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { ConnectionInfo } from '../src/client/connection.tsx'
+import { connectionTone } from '../src/client/status.ts'
 import { ItemDetailView, LibraryView, SetupView } from '../src/client/views.tsx'
 import { ZoteroStore, initialState, libraryRoute, viewKeyFor, type ClientState } from '../src/client/store.ts'
 import { zh } from '../src/client/i18n.ts'
@@ -61,30 +63,52 @@ function preparedStore(entries: { key: string; data: unknown }[]): ZoteroStore {
   return new ZoteroStore(state)
 }
 
+const noop = (): void => {}
+
+/** Minimal ConnectionInfo stub; effects never run in the static renderer. */
+const connFor = (data?: StatusResponse): ConnectionInfo => ({
+  tone: connectionTone(data),
+  ...(data !== undefined ? { data } : {}),
+  loading: false,
+  opening: false,
+  reload: noop,
+  openZotero: noop,
+  openSettings: noop,
+})
+
+/** Probe payload builder (ready by default). */
+const statusData = (overrides: Partial<StatusResponse> = {}): StatusResponse => ({
+  plugin: 'p',
+  state: 'ready',
+  baseUrl: 'http://127.0.0.1:23119',
+  checkedAt: 1,
+  ...overrides,
+})
+
+const readyConn = connFor(statusData())
+
 describe('SetupView', () => {
   it('shows the connection card and guidance while Zotero is not running', () => {
-    const store = preparedStore([{ key: 'status', data: { plugin: 'p', state: 'not_running', baseUrl: 'http://127.0.0.1:23119', checkedAt: 1 } satisfies StatusResponse }])
-    const html = renderToStaticMarkup(React.createElement(SetupView, { store, t, notify, chat }))
+    const data = statusData({ state: 'not_running' })
+    const html = renderToStaticMarkup(React.createElement(SetupView, { t, chat, conn: connFor(data) }))
     expect(html).toContain('Zotero 未运行')
     expect(html).toContain('启动 Zotero 桌面版')
     expect(html).toContain('再次检查')
   })
 
   it('reports the local-API-disabled steps and the unsupported state distinctly', () => {
-    const store = preparedStore([{ key: 'status', data: { plugin: 'p', state: 'api_disabled', baseUrl: 'http://127.0.0.1:23119', checkedAt: 1 } satisfies StatusResponse }])
-    expect(renderToStaticMarkup(React.createElement(SetupView, { store, t, notify, chat }))).toContain('请开启 Zotero 的本地 API')
-    const old = preparedStore([{ key: 'status', data: { plugin: 'p', state: 'unsupported', zoteroVersion: '7.0.6', baseUrl: 'http://127.0.0.1:23119', checkedAt: 1 } satisfies StatusResponse }])
-    const html = renderToStaticMarkup(React.createElement(SetupView, { store: old, t, notify, chat }))
+    const disabled = statusData({ state: 'api_disabled' })
+    expect(renderToStaticMarkup(React.createElement(SetupView, { t, chat, conn: connFor(disabled) }))).toContain('请开启 Zotero 的本地 API')
+    const old = statusData({ state: 'unsupported', zoteroVersion: '7.0.6' })
+    const html = renderToStaticMarkup(React.createElement(SetupView, { t, chat, conn: connFor(old) }))
     expect(html).toContain('Zotero 版本过低')
     expect(html).toContain('7.0.6')
     expect(html).toContain('10')
   })
 
   it('shows the configured Local API address and points edits to the DSH settings form', () => {
-    const store = preparedStore([
-      { key: 'status', data: { plugin: 'p', state: 'ready', zoteroVersion: '10.1.0', baseUrl: 'http://127.0.0.1:23119', checkedAt: 1 } satisfies StatusResponse },
-    ])
-    const html = renderToStaticMarkup(React.createElement(SetupView, { store, t, notify, chat }))
+    const data = statusData({ zoteroVersion: '10.1.0' })
+    const html = renderToStaticMarkup(React.createElement(SetupView, { t, chat, conn: connFor(data) }))
     expect(html).toContain('本地 API 地址')
     expect(html).toContain('http://127.0.0.1:23119')
     // Editing is guided to the official DSH plugin settings form — the panel
@@ -114,7 +138,7 @@ describe('LibraryView', () => {
     ])
 
   it('renders rows with title, localized type, creator·year·venue and a PDF badge', () => {
-    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, route }))
+    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, conn: readyConn, route }))
     expect(html).toContain('Deep Learning for Schema Matching')
     expect(html).toContain('Second Paper')
     expect(html).toContain('期刊文章')
@@ -124,7 +148,7 @@ describe('LibraryView', () => {
   })
 
   it('renders the search box with the everything toggle and total count', () => {
-    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, route }))
+    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, conn: readyConn, route }))
     expect(html).toContain('type="search"')
     expect(html).toContain('检索元数据')
     expect(html).toContain('全文')
@@ -132,7 +156,7 @@ describe('LibraryView', () => {
   })
 
   it('offers Load more when more results remain, capped at 500', () => {
-    expect(renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, route }))).toContain('加载更多')
+    expect(renderToStaticMarkup(React.createElement(LibraryView, { store: store(), t, notify, chat, conn: readyConn, route }))).toContain('加载更多')
     const atCapRoute = { ...route, pages: 10 }
     const capStore = preparedStore([
       {
@@ -140,7 +164,7 @@ describe('LibraryView', () => {
         data: { library: 'user', version: 1, total: 900, start: 0, limit: 500, items: [summary()] },
       },
     ])
-    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: capStore, t, notify, chat, route: atCapRoute }))
+    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: capStore, t, notify, chat, conn: readyConn, route: atCapRoute }))
     expect(html).not.toContain('加载更多')
     expect(html).toContain('最多显示 500 条')
   })
@@ -150,7 +174,7 @@ describe('LibraryView', () => {
       { key: 'status', data: { plugin: 'p', state: 'ready', baseUrl: 'http://127.0.0.1:23119', checkedAt: 1 } satisfies StatusResponse },
       { key: itemsKey, data: { library: 'user', version: 1, total: 0, start: 0, limit: 50, items: [] } },
     ])
-    expect(renderToStaticMarkup(React.createElement(LibraryView, { store: emptyStore, t, notify, chat, route }))).toContain('此范围内没有条目')
+    expect(renderToStaticMarkup(React.createElement(LibraryView, { store: emptyStore, t, notify, chat, conn: readyConn, route }))).toContain('此范围内没有条目')
   })
 
   it('shows error plus Retry on a failed list', () => {
@@ -162,7 +186,7 @@ describe('LibraryView', () => {
         [itemsKey]: { phase: 'error', token: 2, code: 'zotero_not_running', message: 'ECONNREFUSED' },
       },
     }
-    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: new ZoteroStore(state), t, notify, chat, route }))
+    const html = renderToStaticMarkup(React.createElement(LibraryView, { store: new ZoteroStore(state), t, notify, chat, conn: readyConn, route }))
     expect(html).toContain('Zotero 未运行')
     expect(html).toContain('重试')
   })
@@ -179,7 +203,7 @@ describe('ItemDetailView', () => {
     ])
 
   it('renders title, creators, fields table, tags and note sections', () => {
-    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, route, onBack: () => {} }))
+    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, conn: readyConn, route, onBack: () => {} }))
     expect(html).toContain('Deep Learning for Schema Matching')
     expect(html).toContain('Jane Smith')
     expect(html).toContain('DOI')
@@ -192,7 +216,7 @@ describe('ItemDetailView', () => {
   })
 
   it('wires Show in Zotero as an enabled action; the client never renders a deep link', () => {
-    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, route, onBack: () => {} }))
+    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, conn: readyConn, route, onBack: () => {} }))
     expect(html).toContain('在 Zotero 中显示')
     // The action is real now: enabled in the static render (no revealing
     // flag), and the zotero:// URL is built server-side — it must never
@@ -202,7 +226,7 @@ describe('ItemDetailView', () => {
   })
 
   it('disables chat buttons without a session face and names the reason', () => {
-    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, route, onBack: () => {} }))
+    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: store(), t, notify, chat, conn: readyConn, route, onBack: () => {} }))
     expect(html).toContain('disabled')
     expect(html).toContain('当前没有进行中的会话')
   })
@@ -213,7 +237,7 @@ describe('ItemDetailView', () => {
       { key, data: detail({ notes: [{ key: 'NOTE1234', html: '<p>ok</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>', excerpt: '', dateModified: '' }] }) },
       { key: 'annotations:user/ABCD2345', data: { item: 'ABCD2345', attachment: null, annotations: [] } },
     ])
-    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: dirty, t, notify, chat, route, onBack: () => {} }))
+    const html = renderToStaticMarkup(React.createElement(ItemDetailView, { store: dirty, t, notify, chat, conn: readyConn, route, onBack: () => {} }))
     // In this DOM-less environment the view falls back to a plain-text note
     // projection; the built browser bundle sanitizes through DOMPurify
     // (scripts/smoke.mjs asserts the sanitizer ships). Either way no script
@@ -221,6 +245,63 @@ describe('ItemDetailView', () => {
     expect(html).not.toContain('<script')
     expect(html).not.toContain('javascript:')
     expect(html).toContain('ok')
+  })
+})
+
+
+describe('Connection indicator', () => {
+  const route = libraryRoute('user')
+  const itemsKey = viewKeyFor(route) ?? 'items'
+  const storeWith = (data: StatusResponse): ZoteroStore =>
+    preparedStore([
+      { key: 'status', data },
+      { key: itemsKey, data: { library: 'user', version: 1, total: 1, start: 0, limit: 50, items: [summary()] } },
+    ])
+  const renderLibrary = (conn: ConnectionInfo): string =>
+    renderToStaticMarkup(React.createElement(LibraryView, { store: storeWith(statusData({ state: 'ready' })), t, notify, chat, conn, route }))
+
+  it('shows the green pill and no strip for a ready probe', () => {
+    const html = renderLibrary(connFor(statusData()))
+    expect(html).toContain('dshZotStatus ok')
+    expect(html).toContain('已连接')
+    expect(html).toContain('连接状态：已连接')
+    expect(html).not.toContain('dshZotStripWrap open')
+  })
+
+  it('shows the guidance strip with Open Zotero while Zotero is not running', () => {
+    const html = renderLibrary(connFor(statusData({ state: 'not_running' })))
+    expect(html).toContain('dshZotStatus warn')
+    expect(html).toContain('未就绪')
+    expect(html).toContain('dshZotStripWrap open warn')
+    expect(html).toContain('role="status"')
+    expect(html).toContain('Zotero 未运行，启动后会自动连接。')
+    expect(html).toContain('打开 Zotero')
+    expect(html).toContain('重新检测')
+  })
+
+  it('drops Open Zotero when the local API is off or the probe failed', () => {
+    const disabled = renderLibrary(connFor(statusData({ state: 'api_disabled' })))
+    expect(disabled).toContain('Zotero 正在运行，但本地 API 未开启。')
+    expect(disabled).not.toContain('打开 Zotero')
+    const failed = renderLibrary(connFor(statusData({ state: 'error' })))
+    expect(failed).toContain('dshZotStatus bad')
+    expect(failed).toContain('连接失败')
+    expect(failed).toContain('无法访问本机 Zotero')
+  })
+
+  it('places the detail pill before the "open in Zotero" action', () => {
+    const detailRoute = { view: 'item', library: 'user', key: 'ABCD2345' } as const
+    const key = viewKeyFor(detailRoute) ?? 'item'
+    const store = preparedStore([
+      { key: 'status', data: statusData() },
+      { key, data: detail() },
+      { key: 'annotations:user/ABCD2345', data: { item: 'ABCD2345', attachment: 'PDFK2345', annotations: [] } },
+    ])
+    const html = renderToStaticMarkup(
+      React.createElement(ItemDetailView, { store, t, notify, chat, conn: readyConn, route: detailRoute, onBack: () => {} }),
+    )
+    expect(html.indexOf('dshZotStatus')).toBeGreaterThanOrEqual(0)
+    expect(html.indexOf('dshZotStatus')).toBeLessThan(html.indexOf('在 Zotero 中显示'))
   })
 })
 
@@ -233,7 +314,7 @@ describe('Reader (lazy chunk)', () => {
     const route = { view: 'reader', library: 'user', itemKey: 'ABCD2345', attachmentKey: 'PDFK2345', page: 2 } as const
     const store = preparedStore([])
     const html = renderToStaticMarkup(
-      React.createElement(Reader, { route, store, t, notify, chat, onBack: () => {} }),
+      React.createElement(Reader, { route, store, t, notify, chat, conn: readyConn, onBack: () => {} }),
     )
     expect(html).toContain('PDF 阅读')
     // Pre-document render: zoom controls, sidebar toggle, progress state.

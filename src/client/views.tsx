@@ -21,8 +21,6 @@ import {
   getItem,
   getItems,
   getLibraries,
-  getStatus,
-  launchZotero,
   showInZotero,
   type ItemsQueryParams,
 } from './api.ts'
@@ -42,13 +40,14 @@ import {
   type SortField,
   type ZoteroStore,
 } from './store.ts'
+import type { ConnectionInfo } from './connection.tsx'
+import { ConnectionPill, ConnectionStrip } from './connection.tsx'
 import type {
   AnnotationWire,
   CollectionsResponse,
   ItemDetailWire,
   ItemSummaryWire,
   LibrariesResponse,
-  StatusResponse,
 } from '../shared/protocol.ts'
 
 /** Localized item-type label (falls back to the raw Zotero type id). */
@@ -70,43 +69,37 @@ export interface ChatInfo {
   readonly chip: ChipRuntime | null
 }
 
-type ViewProps = { store: ZoteroStore; t: Translate; notify: Notify; chat: ChatInfo }
+/** Props shared by every data view; `conn` is the one app-level probe result. */
+type ViewProps = { store: ZoteroStore; t: Translate; notify: Notify; chat: ChatInfo; conn: ConnectionInfo }
+
+/** Props of the guidance page: the probe result comes in from `ZoteroApp`. */
+type SetupViewProps = { t: Translate; chat: ChatInfo; conn: ConnectionInfo; showDetail?: boolean; onBack?: () => void }
 
 // ---------------------------------------------------------------------------
 // Setup / connection
 // ---------------------------------------------------------------------------
 
-/** Connection-state lamp + guidance per state (ready/not_installed/not_running/api_disabled/unsupported/error). */
-export function SetupView({ store, t, notify, chat, showDetail = true }: ViewProps & { showDetail?: boolean }): JSX.Element {
-  const status = useViewData<StatusResponse>(store, 'status', (signal) => getStatus({ signal }))
-  const data = status.data
+// The probe timer lives in the shared hook (`connection.tsx`), called once
+// from `ZoteroApp`: the guidance page and the data views read one snapshot.
+// Re-exported from here so the long-standing import path used by
+// `tests/client-ui-status.test.ts` keeps working.
+export { statusPollIntervalMs } from './status.ts'
+
+/**
+ * Connection-state lamp + guidance per state (ready/not_installed/not_running/
+ * api_disabled/unsupported/error). Consumes the shared probe result; it owns
+ * no timer and no request of its own.
+ */
+export function SetupView({ t, chat, conn, showDetail = true, onBack }: SetupViewProps): JSX.Element {
+  const data = conn.data
   const state = data?.state ?? 'unknown'
-  const refreshing = status.loading
+  const refreshing = conn.loading
   const install = data?.install
   // "Not installed" and "installed but not started" get different guidance.
   const notInstalled = state === 'not_running' && install !== undefined && install.state === 'missing'
 
-  // Open Zotero: an explicit user click on an explicit button; failures show
-  // an error message (the button recovers — the host reports spawn failures).
-  const [opening, setOpening] = useState(false)
-  const [openError, setOpenError] = useState<string | null>(null)
-  const openZotero = (): void => {
-    if (opening) return
-    setOpening(true)
-    setOpenError(null)
-    void launchZotero()
-      .then(() => {
-        notify(t('setup.installedHint', { version: install?.version ?? '' }))
-        status.reload()
-      })
-      .catch((error: unknown) => {
-        setOpenError(errorText(t, error))
-      })
-      .finally(() => setOpening(false))
-  }
-
   const title = (() => {
-    if (status.error !== undefined) return t('setup.hostUnreachable')
+    if (conn.error !== undefined) return t('setup.hostUnreachable')
     if (data === undefined) return t('setup.connecting')
     if (notInstalled) return t('setup.notInstalledTitle')
     switch (state) {
@@ -123,11 +116,16 @@ export function SetupView({ store, t, notify, chat, showDetail = true }: ViewPro
     }
   })()
 
-  const lamp = status.error !== undefined ? 'bad' : data === undefined ? '' : state === 'ready' ? 'ok' : state === 'error' ? 'bad' : 'warn'
+  const lamp = conn.error !== undefined ? 'bad' : data === undefined ? '' : state === 'ready' ? 'ok' : state === 'error' ? 'bad' : 'warn'
 
   return (
     <div className="dshZotSetup">
       <div className="dshZotSetupHead">
+        {onBack !== undefined && (
+          <button type="button" className="dshZotBack" onClick={onBack} aria-label={t('common.back')}>
+            <Icon name="back" size={15} />
+          </button>
+        )}
         <span className="dshZotSetupIcon">
           <Icon name="plugged" size={18} />
         </span>
@@ -140,13 +138,13 @@ export function SetupView({ store, t, notify, chat, showDetail = true }: ViewPro
             {refreshing ? ` · ${t('common.loading')}` : ''}
           </div>
         </div>
-        <IconButton icon="refresh" label={t('setup.checkAgain')} onClick={status.reload} disabled={refreshing} />
+        <IconButton icon="refresh" label={t('setup.checkAgain')} onClick={conn.reload} disabled={refreshing} />
       </div>
 
-      {status.error !== undefined ? (
+      {conn.error !== undefined ? (
         <>
           <p className="dshZotSetupLead">{t('setup.hostUnreachable')}</p>
-          <pre className="dshZotErrorBox">{status.error.message}</pre>
+          <pre className="dshZotErrorBox">{conn.error.message}</pre>
         </>
       ) : data === undefined ? (
         <p className="dshZotSetupLead">{t('setup.connecting')}</p>
@@ -176,12 +174,12 @@ export function SetupView({ store, t, notify, chat, showDetail = true }: ViewPro
             <>
               <p className="dshZotSetupLead">{t('setup.notRunningBody')}</p>
               <div className="dshZotActions">
-                <button type="button" className="dshZotBtn dshZotPrimary" disabled={opening} onClick={openZotero}>
+                <button type="button" className="dshZotBtn dshZotPrimary" disabled={conn.opening} onClick={conn.openZotero}>
                   <Icon name="power" size={13} />
-                  {opening ? t('setup.opening') : t('setup.openZotero')}
+                  {conn.opening ? t('setup.opening') : t('setup.openZotero')}
                 </button>
               </div>
-              {openError !== null && <pre className="dshZotErrorBox">{openError}</pre>}
+              {conn.openError !== undefined && <pre className="dshZotErrorBox">{conn.openError}</pre>}
               <div className="dshZotSetupCard">
                 <ol className="dshZotSteps">
                   <li>{t('setup.apiDisabledStep1')}</li>
@@ -271,7 +269,7 @@ function ItemRow(props: {
 }
 
 /** Multi-select list with the Add to chat / Ask / Clear bottom bar. */
-function ItemListView(props: ViewProps & { library: LibraryId; list: ItemSummaryWire[] }): JSX.Element {
+function ItemListView(props: Omit<ViewProps, 'conn'> & { library: LibraryId; list: ItemSummaryWire[] }): JSX.Element {
   const { store, t, notify, chat, library, list } = props
   const [selected, setSelected] = useState<string[]>([])
   const [asking, setAsking] = useState(false)
@@ -652,11 +650,13 @@ export function LibraryView(props: ViewProps & { route: Extract<Route, { view: '
         </div>
         <span className="dshZotGrow" />
         {data !== undefined && <span className="dshZotCount">{t('library.items', { n: data.total })}</span>}
+        <ConnectionPill conn={props.conn} t={t} />
         <div className="dshZotMenuAnchor">
           <IconButton icon="sort" label={t('library.sort')} active={menu === 'sort'} onClick={() => setMenu(menu === 'sort' ? null : 'sort')} />
           {menu === 'sort' && <SortMenu route={route} t={t} onPick={(patch) => setQuery(patch)} onClose={() => setMenu(null)} />}
         </div>
       </header>
+      <ConnectionStrip conn={props.conn} t={t} />
 
       <div className="dshZotSearch">
         <Icon name="search" size={15} />
@@ -728,7 +728,9 @@ export function AgentItemsView(props: ViewProps & { route: Extract<Route, { view
         </span>
         <span className="dshZotGrow" />
         <span className="dshZotCount">{t('library.items', { n: route.keys.length })}</span>
+        <ConnectionPill conn={props.conn} t={t} />
       </header>
+      <ConnectionStrip conn={props.conn} t={t} />
       <div className="dshZotScroll">
         <DataGate t={t} loading={list.loading} error={list.error} hasData={list.data !== undefined} empty={t('library.noItems')} onRetry={list.reload}>
           <ItemListView store={store} t={t} notify={props.notify} chat={props.chat} library={route.library} list={list.data?.items ?? []} />
@@ -874,7 +876,10 @@ export function ItemDetailView(props: ViewProps & { route: Extract<Route, { view
           <button type="button" className="dshZotBack" onClick={props.onBack} aria-label={t('common.back')}>
             <Icon name="back" size={15} />
           </button>
+          <span className="dshZotGrow" />
+          <ConnectionPill conn={props.conn} t={t} />
         </header>
+        <ConnectionStrip conn={props.conn} t={t} />
         <div className="dshZotScroll">
           {detail.error !== undefined ? (
             <Empty>
@@ -944,11 +949,13 @@ export function ItemDetailView(props: ViewProps & { route: Extract<Route, { view
         <span className="dshZotBarTitle dshZotGrow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {itemTypeLabel(t, item.itemType)}
         </span>
+        <ConnectionPill conn={props.conn} t={t} />
         <button type="button" className="dshZotBtn dshZotGhost" disabled={revealing} title={t('detail.showInZotero')} onClick={showInZoteroNow}>
           <Icon name="library" size={13} />
           {t('detail.showInZotero')}
         </button>
       </header>
+      <ConnectionStrip conn={props.conn} t={t} />
       <div className="dshZotScroll">
         <div className="dshZotDetail">
           <h2 className="dshZotDetailTitle">{item.title}</h2>

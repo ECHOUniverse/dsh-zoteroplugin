@@ -25,6 +25,7 @@ import type { ChipRuntime } from './context-chip-source.ts'
 import { loadPdf, TextLayer, toViewport, type LoadedPdf, type PDFDocumentProxy } from './pdf.ts'
 import type { HighlightWire, ItemDetailWire, AnnotationsResponse } from '../shared/protocol.ts'
 import type { AnnotationWire, RectWire } from '../shared/protocol.ts'
+import { ConnectionStrip, type ConnectionInfo } from './connection.tsx'
 import { Icon } from './icons.tsx'
 import type { Route, ZoteroStore } from './store.ts'
 import { AskBox, Empty, IconButton, errorText, viewErrorText, type Notify, type Translate } from './ui.tsx'
@@ -284,6 +285,8 @@ export function Reader(props: {
   t: Translate
   notify: Notify
   chat: { face: ChatFace | null; busy: boolean; hasSession: boolean; sessionId: string | undefined; chip: ChipRuntime | null }
+  /** App-level probe result; the reader shows the guidance strip only (the bar is full). */
+  conn: ConnectionInfo
   onBack: () => void
 }): JSX.Element {
   const { route, store, t, notify, chat, onBack } = props
@@ -609,6 +612,7 @@ export function Reader(props: {
         <IconButton icon="library" label={t('reader.showInZotero')} disabled={revealing} onClick={showInZoteroNow} />
         <IconButton icon="highlighter" label={t('reader.sidebar')} active={sidebar} onClick={() => setSidebar(!sidebar)} />
       </header>
+      <ConnectionStrip conn={props.conn} t={t} />
       <div className="dshZotReaderBody">
         <div className="dshZotPages dshZotScroll" ref={scrollRef} onScroll={updateVisible}>
           {error !== null ? (

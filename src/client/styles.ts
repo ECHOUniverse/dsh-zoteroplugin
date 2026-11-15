@@ -19,6 +19,10 @@ export const CSS = String.raw`
   font: inherit;
   color: var(--dsw-alias-label-primary, inherit);
   background: var(--dsw-alias-bg-base, transparent);
+  /* Anchor for the narrow-pane container query below. Inline-size containment
+     only: the flex column's own layout is unchanged. Hosts without container
+     query support simply keep the full pill label (valid degrade). */
+  container-type: inline-size;
 }
 .dshZot * { box-sizing: border-box; }
 .dshZot :focus-visible {
@@ -246,6 +250,102 @@ export const CSS = String.raw`
 .dshZotLamp.ok { background: var(--dsw-alias-state-success-primary, #1a7f37); }
 .dshZotLamp.bad { background: var(--dsw-alias-state-error-primary, #b3261e); }
 .dshZotLamp.warn { background: var(--dsw-alias-state-warn-primary, #b58a00); }
+
+/* --- connection indicator: top-bar pill + guidance strip ------------------ */
+/* Tone resolves to a host state token on a scoped custom property; every
+   surface below is a color-mix of it, so light and dark themes both come from
+   the host palette instead of hardcoded light backgrounds. */
+.dshZotStatus.ok { --dshZotState: var(--dsw-alias-state-success-primary, #1a7f37); }
+.dshZotStatus.warn { --dshZotState: var(--dsw-alias-state-warn-primary, #b58a00); }
+.dshZotStatus.bad { --dshZotState: var(--dsw-alias-state-error-primary, #b3261e); }
+.dshZotStripWrap.warn { --dshZotState: var(--dsw-alias-state-warn-primary, #b58a00); }
+.dshZotStripWrap.bad { --dshZotState: var(--dsw-alias-state-error-primary, #b3261e); }
+
+/* Pill: dot + 11px label. ".dshZot .dshZotStatus" outranks the generic
+   ".dshZot button" reset so the tinted background and border survive. */
+.dshZot .dshZotStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dshZotState, currentColor) 30%, transparent);
+  background: color-mix(in srgb, var(--dshZotState, currentColor) 8%, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+  white-space: nowrap;
+}
+.dshZot .dshZotStatus:hover { background: color-mix(in srgb, var(--dshZotState, currentColor) 14%, transparent); }
+.dshZotStatusDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--dshZotState, currentColor);
+  /* Mixing toward the theme label color keeps the 7px dot readable on light
+     and dark panels without a theme selector (prototype did the same for dark). */
+  background: color-mix(in srgb, var(--dshZotState, currentColor) 78%, var(--dsw-alias-label-primary, currentColor));
+}
+.dshZotStatusLabel { font-size: 11px; line-height: 1; color: inherit; }
+
+/* Strip: full-width row under the bar. Collapsed (height 0, out of the a11y
+   tree) for ok; 160ms max-height transition, disabled under reduced motion. */
+.dshZotStripWrap {
+  flex: none;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: max-height 160ms ease, opacity 140ms ease, visibility 0s linear 160ms;
+}
+.dshZotStripWrap.open {
+  max-height: 132px;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s, 0s, 0s;
+}
+.dshZotStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--dshZotState, currentColor) 10%, transparent);
+  border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0,0,0,0.08));
+}
+.dshZotStripText {
+  flex: 1 1 160px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+.dshZotStripActions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+/* Scoped above ".dshZot button" (border/padding reset), like the pill. */
+.dshZot .dshZotStripBtn {
+  justify-content: center;
+  min-width: 64px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  line-height: 16px;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(0,0,0,0.16));
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-1, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.dshZot .dshZotStripBtn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, rgba(0,0,0,0.05)); }
+
+/* Narrow panes drop the pill label (dot only; the native title still carries
+   the full reason). Browsers without container queries keep the label. */
+@container (max-width: 380px) {
+  .dshZot .dshZotStatus { padding: 0; width: 22px; justify-content: center; background: none; border-color: transparent; }
+  .dshZot .dshZotStatus .dshZotStatusLabel { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dshZotStripWrap { transition: none; }
+}
 
 /* --- reader boundary ------------------------------------------------------ */
 .dshZotReader { padding: 18px 14px; display: flex; flex-direction: column; gap: 10px; }

@@ -37,7 +37,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { PLUGIN_NAME, PLUGIN_VERSION, type ViewEvent } from './shared/protocol.ts'
-import { connectViewEvents, getItem, getStatus, type ViewStreamHandle } from './client/api.ts'
+import { connectViewEvents, getItem, type ViewStreamHandle } from './client/api.ts'
 import { chatFaceFrom, type ChatFace } from './client/chat-draft.ts'
 import { registerContextCard } from './client/context-card.tsx'
 import { currentChipRuntime, installChipRuntime, registerContextChipSource, type ChipHost, type ChipServices } from './client/context-chip-source.ts'
@@ -46,7 +46,8 @@ import { GuideLibraryIcon } from './client/guide-icon.tsx'
 import { Icon } from './client/icons.tsx'
 import { CSS } from './client/styles.ts'
 import { ZoteroStore, currentRoute, type Route } from './client/store.ts'
-import { Toast, useViewData, type Notify, type Translate } from './client/ui.tsx'
+import { useConnection, type ConnectionInfo } from './client/connection.tsx'
+import { Toast, type Notify, type Translate } from './client/ui.tsx'
 import { AgentItemsView, ItemDetailView, LibraryView, SetupView, type ChatInfo } from './client/views.tsx'
 
 /** Locale namespace of this bundle. */
@@ -150,6 +151,7 @@ interface PdfChunk {
     t: TranslateFn
     notify: Notify
     chat: ChatInfo
+    conn: ConnectionInfo
     onBack: () => void
   }) => ReactNode
 }
@@ -169,8 +171,8 @@ function loadPdfChunk(): Promise<PdfChunk> {
   return pdfChunkPromise
 }
 
-function ReaderSlot(props: { route: Extract<Route, { view: 'reader' }>; t: TranslateFn; notify: Notify; onBack: () => void }): JSX.Element {
-  const { route, t, notify, onBack } = props
+function ReaderSlot(props: { route: Extract<Route, { view: 'reader' }>; t: TranslateFn; notify: Notify; conn: ConnectionInfo; onBack: () => void }): JSX.Element {
+  const { route, t, notify, conn, onBack } = props
   const chat = useContext(ChatContext)
   const [chunk, setChunk] = useState<PdfChunk | null>(null)
   const [failed, setFailed] = useState(false)
@@ -187,7 +189,7 @@ function ReaderSlot(props: { route: Extract<Route, { view: 'reader' }>; t: Trans
       cancelled = true
     }
   }, [])
-  if (chunk !== null) return <chunk.Reader route={route} store={store} t={t} notify={notify} chat={chat} onBack={onBack} />
+  if (chunk !== null) return <chunk.Reader route={route} store={store} t={t} notify={notify} chat={chat} conn={conn} onBack={onBack} />
   return (
     <div className="dshZot">
       <header className="dshZotBar">
@@ -202,20 +204,20 @@ function ReaderSlot(props: { route: Extract<Route, { view: 'reader' }>; t: Trans
 }
 
 /** Route → view switch (pure structure; data flows through the store). */
-function RouteView(props: { route: Route; t: TranslateFn; notify: Notify; onBack: () => void }): JSX.Element {
-  const { route, t, notify, onBack } = props
+function RouteView(props: { route: Route; t: TranslateFn; notify: Notify; conn: ConnectionInfo; onBack: () => void }): JSX.Element {
+  const { route, t, notify, conn, onBack } = props
   const chat = useContext(ChatContext)
   switch (route.view) {
     case 'library':
-      return <LibraryView store={store} t={t} notify={notify} chat={chat} route={route} />
+      return <LibraryView store={store} t={t} notify={notify} chat={chat} conn={conn} route={route} />
     case 'items':
-      return <AgentItemsView store={store} t={t} notify={notify} chat={chat} route={route} onBack={onBack} />
+      return <AgentItemsView store={store} t={t} notify={notify} chat={chat} conn={conn} route={route} onBack={onBack} />
     case 'item':
-      return <ItemDetailView store={store} t={t} notify={notify} chat={chat} route={route} onBack={onBack} />
+      return <ItemDetailView store={store} t={t} notify={notify} chat={chat} conn={conn} route={route} onBack={onBack} />
     case 'reader':
-      return <ReaderSlot route={route} t={t} notify={notify} onBack={onBack} />
+      return <ReaderSlot route={route} t={t} notify={notify} conn={conn} onBack={onBack} />
     case 'settings':
-      return <SetupView store={store} t={t} notify={notify} chat={chat} />
+      return <SetupView t={t} chat={chat} conn={conn} showDetail />
   }
 }
 
@@ -228,17 +230,23 @@ function ZoteroApp(props: { t: TranslateFn }): JSX.Element {
   const dismiss = useCallback(() => setToast(null), [])
   const notify = useMemo<Notify>(() => (message, tone) => setToast({ message, tone }), [])
 
-  const status = useViewData(store, 'status', (signal) => getStatus({ signal }))
+  // One probe for the whole app: the guidance page and the data views share
+  // this snapshot, so no view starts a second timer.
+  const conn = useConnection(store, t, notify)
   const route = currentRoute(state)
-  const statusData = status.data
-  const ready = statusData?.state === 'ready'
 
-  if (route.view === 'settings' || !ready) {
-    // Settings route, first probe, and every not-ready state show the
-    // connection card (guidance is per state).
+  // Gate: the full guidance page owns the panel while the data layer is
+  // unusable — the host routes themselves are unreachable (the status request
+  // failed) or no probe result exists yet — plus the explicit settings route.
+  // A reachable-but-not-ready Zotero is NOT a gate: the views render normally
+  // and the pill/strip express the state (data requests fail into DataGate,
+  // which already offers retry).
+  if (route.view === 'settings' || conn.data === undefined || conn.error !== undefined) {
+    const onBack =
+      route.view === 'settings' && state.stack.length > 1 ? (): void => store.dispatch({ type: 'back' }) : undefined
     return (
       <div className="dshZotRoot">
-        <SetupView store={store} t={t} notify={notify} chat={chat} showDetail />
+        <SetupView t={t} chat={chat} conn={conn} showDetail {...(onBack !== undefined ? { onBack } : {})} />
         {toast !== null && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
       </div>
     )
@@ -247,7 +255,7 @@ function ZoteroApp(props: { t: TranslateFn }): JSX.Element {
   return (
     <div className="dshZotRoot">
       <div className="dshZot">
-        <RouteView route={route} t={t} notify={notify} onBack={() => store.dispatch({ type: 'back' })} />
+        <RouteView route={route} t={t} notify={notify} conn={conn} onBack={() => store.dispatch({ type: 'back' })} />
       </div>
       {toast !== null && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
     </div>
