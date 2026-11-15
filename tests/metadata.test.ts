@@ -170,6 +170,9 @@ describe('resolveIdentifier (network contract, fake fetch)', () => {
   it('queries export.arxiv.org with the id_list and parses the Atom answer', async () => {
     const seen: string[] = []
     const resolved = await resolveIdentifier({ kind: 'arxiv', value: '2401.01234' }, {
+      // Public-IP DNS fake (same style as the downloadPdf cases below): this is
+      // a network-contract test, so it must not depend on the runner's DNS.
+      lookup: async () => [{ address: '93.184.216.34', family: 4 }],
       fetchImpl: async (url) => {
         seen.push(url)
         return new Response(ATOM_ENTRY, { status: 200 })
