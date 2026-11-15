@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zotero 面板 · 连接状态指示器原型</title>
+<!--
+  原型 · 一次性 · 不属于插件代码
+  ---------------------------------------------------------------------------
+  这是什么：DSH 右侧栏「Zotero」面板顶栏（.dshZotBar，36px）里的「连接状态
+  指示器」视觉原型。单文件、零依赖、无 CDN、无构建、无网络请求；不接入真实
+  插件代码，只用来做设计判断。
+
+  要回答的问题：在 36px 高的顶栏右端、与「806 条」计数和排序图标共处的狭窄
+  空间里，如何让用户一眼看出 Zotero 的连接状态（绿/黄/红），同时不挤压条目
+  内容、不打断阅读？
+
+  已选方向 / 默认方案：
+    E 胶囊 + 引导条  —— A 的胶囊（圆点 + 短文案）放在顶栏计数之后、排序之前；
+                       非绿色时顶栏下滑出整宽提示条（无圆点），带「打开 Zotero」/
+                       「重新检测」。绿色时提示条严格 0 高度，不占位。
+
+  其余四个方案保留作对照：
+    A 状态胶囊      —— 彩色圆点 + 短文案装在浅色胶囊里，顶栏内最直白的一种。
+    B 信号图标      —— 三根递增信号条 + 12px 灰色文案，无边框无底色；悬停/点击
+                       出浮层说明原因并提供「重新检测」。
+    C 边缘色条      —— 2px 状态色画在面板最上沿（沿圆角），顶栏用
+                       「806 条 · 已连接」把状态并进计数行。
+    D 引导式展开条  —— 顶栏只留圆点 + 短文案；非绿色时顶栏下滑出整宽提示条
+                       （条内带圆点），带「打开 Zotero」/「重新检测」操作。
+
+  三种状态（颜色取自插件状态 token，未自行发明）：
+    绿色 #1a7f37 已连接 / 黄色 #b58a00 未就绪 / 红色 #b3261e 连接失败
+
+  怎么打开：直接在浏览器里双击本文件（file://）即可，无需服务器。
+  调试参数（可直接改地址栏，也可用底部切换器；切换器与 URL 双向同步）：
+    ?variant=E|A|B|C|D&state=green|amber|red&w=320|480|1000&theme=light|dark
+    （不带 variant 时默认 E；方向键顺序为 E → A → B → C → D）
+  底部深色胶囊是原型工具条，故意做成不属于页面设计的样子：
+    ← / → 或键盘左右方向键切换方案；另有状态、宽度、明暗切换。
+  说明：file:// 页面在部分浏览器里不允许 replaceState 带查询串，脚本会
+  退回到只改 fragment（同样不刷新页面），两种写法都能被读取。
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --font: -apple-system, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif;
+
+    /* 插件已有的状态 token（不要改值） */
+    --green: #1a7f37;
+    --green-rgb: 26, 127, 55;
+    --amber: #b58a00;
+    --amber-rgb: 181, 138, 0;
+    --red: #b3261e;
+    --red-rgb: 179, 38, 30;
+
+    /* 中性色 · 浅色 */
+    --desk: #e9e8e6;
+    --panel: #fff;
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --text-3: #8a8a8e;
+    --line: rgba(0, 0, 0, 0.08);
+    --line-strong: rgba(0, 0, 0, 0.12);
+    --hover: rgba(0, 0, 0, 0.05);
+    --field: #fff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 14px 34px rgba(0, 0, 0, 0.12);
+    --pop-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+    --focus: #6e6e73;
+    --scroll-thumb: rgba(0, 0, 0, 0.18);
+
+    --panel-w: 480px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --desk: #111112;
+    --panel: #1c1c1e;
+    --text: #f2f2f4;
+    --text-2: #a8a8ae;
+    --text-3: #86868b;
+    --line: rgba(255, 255, 255, 0.1);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --hover: rgba(255, 255, 255, 0.06);
+    --field: rgba(255, 255, 255, 0.06);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px rgba(0, 0, 0, 0.55);
+    --pop-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    --focus: #a8a8ae;
+    --scroll-thumb: rgba(255, 255, 255, 0.22);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--desk);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .grow { flex: 1 1 0; min-width: 0; }
+
+  /* ---------- 桌面 + 面板外框 ---------- */
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 28px 24px 108px;
+  }
+
+  .panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: var(--panel-w);
+    max-width: calc(100vw - 40px);
+    height: clamp(480px, calc(100vh - 136px), 900px);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+
+    /* 状态派生色：语义色只来自 --green/--amber/--red 三个 token。
+       必须声明在 .panel 上（而不是 :root），因为 --state/--state-rgb 由
+       下方 [data-state] 规则设在同一元素上，声明在 :root 会在继承前就解析失败。 */
+    --state-ink: var(--state);
+    --tint: rgba(var(--state-rgb), 0.08);
+    --state-line: rgba(var(--state-rgb), 0.3);
+  }
+
+  [data-theme="dark"] .panel {
+    --tint: rgba(var(--state-rgb), 0.14);
+    --state-line: rgba(var(--state-rgb), 0.42);
+  }
+
+  /* 暗色下把状态色与白色混一点，保证 8px 圆点/细线可辨；色相仍来自 token。 */
+  @supports (color: color-mix(in srgb, black, white)) {
+    [data-theme="dark"] .panel { --state-ink: color-mix(in srgb, var(--state) 62%, #fff); }
+  }
+
+  /* Variant C：2px 状态色画在面板最上沿。用 border-top 让它天然沿圆角走，
+     不会出现直线压在圆角上的硬边。 */
+  .panel[data-variant="C"] {
+    border-top-width: 2px;
+    border-top-color: var(--state-ink);
+  }
+
+  .panel[data-state="green"] { --state: var(--green); --state-rgb: var(--green-rgb); }
+  .panel[data-state="amber"] { --state: var(--amber); --state-rgb: var(--amber-rgb); }
+  .panel[data-state="red"] { --state: var(--red); --state-rgb: var(--red-rgb); }
+
+  /* ---------- 标签行 ---------- */
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    flex: none;
+    padding: 0 8px 0 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 26px;
+    padding: 0 6px 0 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text);
+  }
+  .tab:hover { background: var(--hover); }
+  .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab-icon { flex: none; color: var(--text-2); }
+  .tab-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 4px;
+    color: var(--text-3);
+  }
+  .tab-x:hover { background: var(--hover); color: var(--text-2); }
+  .tabs-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  .tabs-divider { width: 1px; height: 14px; flex: none; margin: 0 2px; background: var(--line); }
+
+  .iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-2);
+  }
+  .iconbtn:hover { background: var(--hover); color: var(--text); }
+
+  /* ---------- 顶栏 .dshZotBar ---------- */
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    flex: none;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 52%;
+    height: 24px;
+    padding: 0 5px 0 6px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text);
+  }
+  .scope:hover { background: var(--hover); }
+  .scope svg { flex: none; color: var(--text-2); }
+  .scope-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .count { display: inline-flex; align-items: center; flex: none; font-size: 11px; color: var(--text-3); }
+
+  /* ---------- 状态指示器公共 ---------- */
+  .ind { display: none; align-items: center; flex: none; cursor: pointer; }
+  .panel[data-variant="E"] .ind-a,
+  .panel[data-variant="A"] .ind-a,
+  .panel[data-variant="B"] .ind-b,
+  .panel[data-variant="C"] .ind-c,
+  .panel[data-variant="D"] .ind-d { display: flex; }
+
+  .dot {
+    width: 8px; height: 8px;
+    flex: none;
+    border-radius: 999px;
+    background: var(--state-ink);
+  }
+  .dot-sm { width: 6px; height: 6px; }
+
+  /* A：状态胶囊，位于「806 条」之后、排序之前 */
+  .ind-a {
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px 0 7px;
+    border-radius: 999px;
+    background: var(--tint);
+    border: 1px solid var(--state-line);
+  }
+  .ind-a .ind-label { font-size: 11px; line-height: 1; color: var(--text); }
+
+  /* Variant E 沿用 A 的胶囊，只按选定稿把圆点收到 7px、左右内边距统一 8px；
+     A 本体保持原样。窄宽下仍走 A 的「只留圆点」规则，所以这里排除 320。 */
+  .panel[data-variant="E"] .ind-a .dot { width: 7px; height: 7px; }
+  .panel[data-variant="E"]:not([data-w="320"]) .ind-a { padding: 0 8px; }
+
+  /* B：信号条 + 灰色文案 + 浮层 */
+  .ind-b { position: relative; }
+  .b-trigger { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 2px; }
+  .signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; flex: none; }
+  .signal i { display: block; width: 2.5px; border-radius: 1px; background: var(--state-ink); }
+  .signal i:nth-child(1) { height: 5px; }
+  .signal i:nth-child(2) { height: 8px; }
+  .signal i:nth-child(3) { height: 11px; }
+  .ind-b .ind-label { font-size: 12px; line-height: 1; color: var(--text-2); }
+
+  .pop {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 12px);
+    right: 0;
+    width: 236px;
+    padding: 10px 12px 11px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line-strong);
+    background: var(--panel);
+    box-shadow: var(--pop-shadow);
+    display: none;
+    text-align: left;
+    white-space: normal;
+    cursor: default;
+  }
+  /* 悬停桥：图标与浮层之间 12px 的缝隙不打断 hover */
+  .pop::before { content: ""; position: absolute; left: 0; right: 0; top: -14px; height: 14px; }
+  .ind-b:hover .pop,
+  .ind-b:focus-within .pop,
+  .ind-b[data-open="true"] .pop { display: block; }
+  .pop-head { display: flex; align-items: center; gap: 6px; }
+  .pop-head .dot { width: 7px; height: 7px; }
+  .pop-title { font-size: 12px; font-weight: 500; color: var(--text); }
+  .pop-reason { margin: 4px 0 10px; font-size: 11.5px; line-height: 17px; color: var(--text-2); }
+  .pop-actions { display: flex; gap: 6px; }
+  .pop-btn,
+  .strip-btn {
+    min-width: 62px;
+    padding: 3px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 11px;
+    line-height: 15px;
+  }
+  .pop-btn:hover,
+  .strip-btn:hover { background: var(--hover); }
+
+  /* C：状态并入计数行（「806 条 · 已连接」），语义主要由面板上沿色条承担 */
+  .ind-c { gap: 4px; align-items: center; margin-left: 4px; }
+  .c-sep { font-size: 11px; color: var(--text-3); }
+  .c-word { font-size: 11px; line-height: 1; color: var(--state-ink); }
+
+  /* D：圆点 + 短文案 */
+  .ind-d { gap: 5px; }
+  .ind-d .ind-label { font-size: 11px; line-height: 1; color: var(--text-2); }
+
+  /* D：非绿色时滑出的整宽提示条 */
+  .strip-wrap {
+    flex: none;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    transition: max-height 180ms ease, opacity 140ms ease, visibility 0s linear 180ms;
+  }
+  .panel[data-variant="D"][data-state="amber"] .strip-wrap:not(.strip-wrap-e),
+  .panel[data-variant="D"][data-state="red"] .strip-wrap:not(.strip-wrap-e) {
+    max-height: 132px;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s, 0s, 0s;
+  }
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    padding: 8px 10px;
+    background: var(--tint);
+    border-bottom: 1px solid var(--line);
+    font-size: 11.5px;
+    line-height: 16px;
+  }
+  .strip-text { flex: 1 1 150px; min-width: 0; color: var(--text-2); }
+  .strip-actions { display: flex; gap: 6px; margin-left: auto; flex: none; }
+
+  /* Variant E：A 的胶囊 + 非绿色引导条（条内无圆点，160ms 高度过渡，绿色 0 高度） */
+  .strip-wrap-e { transition: max-height 160ms ease, opacity 140ms ease, visibility 0s linear 160ms; }
+  .panel[data-variant="E"][data-state="amber"] .strip-wrap-e,
+  .panel[data-variant="E"][data-state="red"] .strip-wrap-e {
+    max-height: 132px;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s, 0s, 0s;
+  }
+  .strip-e { padding: 6px 10px; gap: 6px 8px; font-size: 12px; line-height: 1.5; }
+  .strip-e .strip-text { flex: 1 1 160px; font-size: 12px; line-height: 18px; }
+  .strip-e .strip-btn { min-width: 64px; padding: 3px 9px; font-size: 11.5px; line-height: 16px; }
+
+  /* 窄宽（320px）收起状态文案，只留圆点/图标，原生 title 兜底 */
+  .panel[data-w="320"] .ind-a,
+  .panel[data-w="320"] .ind-d { padding: 0; height: 22px; width: 22px; justify-content: center; background: none; border-color: transparent; }
+  .panel[data-w="320"] .ind-a .ind-label,
+  .panel[data-w="320"] .ind-b .ind-label,
+  .panel[data-w="320"] .ind-d .ind-label { display: none; }
+  .panel[data-w="320"] .strip {
+    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "dot text" "actions actions";
+    gap: 4px 8px;
+  }
+  .panel[data-w="320"] .strip .dot { grid-area: dot; align-self: start; margin-top: 2px; }
+  .panel[data-w="320"] .strip-text { grid-area: text; }
+  .panel[data-w="320"] .strip-actions { grid-area: actions; margin-left: 0; }
+  .panel[data-w="320"] .strip-btn { min-width: 0; padding: 4px 8px; font-size: 12px; line-height: 16px; }
+  .panel[data-w="320"] .strip-e {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "text" "actions";
+  }
+  .panel[data-w="320"] .strip-e .strip-actions { margin-left: 0; }
+
+  /* ---------- 搜索行 ---------- */
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 5px 10px 7px;
+    border-bottom: 1px solid var(--line);
+  }
+  .search svg { flex: none; color: var(--text-3); }
+  .search input[type="search"] {
+    flex: 1 1 40px;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .search input[type="search"]::placeholder { color: var(--text-3); }
+  .search input[type="search"]:focus { border-color: var(--text-3); }
+  .search input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+  .check { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 11px; color: var(--text-2); white-space: nowrap; cursor: pointer; }
+  .check input { margin: 0; accent-color: var(--text); }
+
+  /* ---------- 条目列表 ---------- */
+  .list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0;
+    padding: 2px 6px 10px;
+    list-style: none;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 999px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 7px; border-radius: var(--radius-sm); }
+  .row:hover { background: var(--hover); }
+  .row-main { flex: 1 1 0; min-width: 0; }
+  .row-pdf {
+    flex: none;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    line-height: 15px;
+    letter-spacing: 0.02em;
+    color: var(--text-3);
+  }
+  .row-pdf::before {
+    content: "";
+    width: 10px;
+    height: 12px;
+    background-color: currentColor;
+    opacity: 0.9;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M2 1.6h5.2L11 5.4v7H2z' fill='none' stroke='black' stroke-width='1.3'/%3E%3Cpath d='M7.2 1.6v3.8H11' fill='none' stroke='black' stroke-width='1.3'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M2 1.6h5.2L11 5.4v7H2z' fill='none' stroke='black' stroke-width='1.3'/%3E%3Cpath d='M7.2 1.6v3.8H11' fill='none' stroke='black' stroke-width='1.3'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .row-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--text);
+  }
+  .row-meta { display: flex; gap: 5px; min-width: 0; margin-top: 2px; font-size: 11.5px; line-height: 15px; color: var(--text-2); }
+  .row-type { flex: none; color: var(--text-3); }
+  .row-metatext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- 原型切换器（刻意不属于页面设计） ---------- */
+  .switcher {
+    position: fixed;
+    z-index: 100;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: calc(100vw - 20px);
+    padding: 6px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: #141416;
+    color: #fff;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .switcher::-webkit-scrollbar { display: none; }
+  .switcher :focus-visible { outline-color: #fff; }
+  .sw-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    flex: none;
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.82);
+  }
+  .sw-arrow:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .sw-kicker {
+    flex: none;
+    padding: 0 2px 0 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .sw-label { flex: none; min-width: 92px; text-align: center; font-size: 12px; font-weight: 500; color: #fff; }
+  .sw-sep { flex: none; width: 1px; height: 18px; margin: 0 4px; background: rgba(255, 255, 255, 0.16); }
+  .sw-group { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+  .sw-opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.72);
+  }
+  .sw-opt:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  .sw-opt[aria-pressed="true"] { background: #fff; color: #141416; }
+  .sw-dot { width: 8px; height: 8px; flex: none; border-radius: 999px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="stage">
+  <section class="panel" id="panel" data-variant="E" data-state="green" data-w="480" aria-label="Zotero 面板（原型）">
+    <!-- 1. 标签行 -->
+    <header class="tabs">
+      <div class="tab">
+        <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4v16M8 4v16M12 5l4 15M17 6l3 14"/>
+        </svg>
+        <span class="tab-name">Zotero</span>
+        <button class="tab-x" type="button" aria-label="关闭 Zotero 标签">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <span class="grow"></span>
+      <span class="tabs-actions">
+        <button class="iconbtn" type="button" aria-label="新建标签" title="新建标签">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <span class="tabs-divider" aria-hidden="true"></span>
+        <button class="iconbtn" type="button" aria-label="单栏布局" title="单栏布局">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/></svg>
+        </button>
+        <button class="iconbtn" type="button" aria-label="左右分栏" title="左右分栏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14 4.5v15"/></svg>
+        </button>
+        <button class="iconbtn" type="button" aria-label="上下分栏" title="上下分栏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 12h17"/></svg>
+        </button>
+      </span>
+    </header>
+
+    <!-- 2. 顶栏 .dshZotBar -->
+    <div class="bar">
+      <button class="scope" type="button" aria-haspopup="menu" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4v16M8 4v16M12 5l4 15M17 6l3 14"/>
+        </svg>
+        <span class="scope-label">我的文库</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 9l7 7 7-7"/>
+        </svg>
+      </button>
+      <span class="grow"></span>
+
+      <!-- 右侧顺序统一为：计数 → 状态 → 排序图标（排序永远最右） -->
+      <span class="count">806 条<span class="ind ind-c" data-bind="title"><span class="c-sep" aria-hidden="true">·</span><span class="c-word" data-bind="label">已连接</span></span></span>
+
+      <!-- Variant A：状态胶囊 -->
+      <span class="ind ind-a" data-bind="title">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="ind-label" data-bind="label">已连接</span>
+      </span>
+
+      <!-- Variant B：信号图标 + 悬停/点击浮层 -->
+      <div class="ind ind-b" id="pop-wrap" data-open="false">
+        <button class="b-trigger" type="button" id="pop-toggle" aria-haspopup="dialog" aria-expanded="false">
+          <span class="signal" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="ind-label" data-bind="label">已连接</span>
+        </button>
+        <div class="pop" role="dialog" aria-label="连接状态详情">
+          <div class="pop-head">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="pop-title">已连接</span>
+          </div>
+          <p class="pop-reason"></p>
+          <div class="pop-actions">
+            <button class="pop-btn" type="button" data-action="check">重新检测</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variant D：圆点 + 短文案；非绿色时下方滑出提示条 -->
+      <span class="ind ind-d" data-bind="title">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="ind-label" data-bind="label">已连接</span>
+      </span>
+
+      <!-- 排序：顶栏最右 -->
+      <button class="iconbtn" type="button" aria-label="排序" title="排序">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 4v16M4 8l3-4 3 4M17 20V4M14 16l3 4 3-4"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Variant D：引导式提示条（仅非绿色、仅 D 显示，条内带圆点） -->
+    <div class="strip-wrap" aria-hidden="true">
+      <div class="strip">
+        <span class="dot dot-sm" aria-hidden="true"></span>
+        <span class="strip-text"></span>
+        <span class="strip-actions">
+          <button class="strip-btn" type="button" data-action="open">打开 Zotero</button>
+          <button class="strip-btn" type="button" data-action="check">重新检测</button>
+        </span>
+      </div>
+    </div>
+
+    <!-- Variant E：胶囊 + 非绿色引导条（条内无圆点，顶部胶囊已有；仅 E 非绿色显示） -->
+    <div class="strip-wrap strip-wrap-e" aria-hidden="true">
+      <div class="strip strip-e">
+        <span class="strip-text"></span>
+        <span class="strip-actions">
+          <button class="strip-btn" type="button" data-action="open">打开 Zotero</button>
+          <button class="strip-btn" type="button" data-action="check">重新检测</button>
+        </span>
+      </div>
+    </div>
+
+    <!-- 3. 搜索行 -->
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/>
+      </svg>
+      <input type="search" placeholder="检索元数据（标题/作者/年份…）" aria-label="检索元数据（标题/作者/年份…）">
+      <label class="check"><input type="checkbox"><span>全文</span></label>
+    </div>
+
+    <!-- 4. 条目列表（真实数据） -->
+    <ul class="list">
+      <li class="row">
+        <div class="row-main">
+          <span class="row-title">Predicting phase behavior of grain boundaries with evolutionary search and machine learning</span>
+          <span class="row-meta"><span class="row-type">期刊文章</span><span class="row-metatext">Zhu 等 · 2018 · Nature Communications</span></span>
+        </div>
+        <span class="row-pdf" aria-hidden="true">PDF</span>
+      </li>
+      <li class="row">
+        <div class="row-main">
+          <span class="row-title">Grand canonically optimized grain boundary phases in hexagonal close-packed titanium</span>
+          <span class="row-meta"><span class="row-type">期刊文章</span><span class="row-metatext">Chen 等 · 2024 · Nature Communications</span></span>
+        </div>
+        <span class="row-pdf" aria-hidden="true">PDF</span>
+      </li>
+      <li class="row">
+        <div class="row-main">
+          <span class="row-title">Machine Learning Interatomic Potentials as Emerging Tools for Materials Science</span>
+          <span class="row-meta"><span class="row-type">期刊文章</span><span class="row-metatext">Deringer 等 · 2019 · Advanced Materials</span></span>
+        </div>
+        <span class="row-pdf" aria-hidden="true">PDF</span>
+      </li>
+      <li class="row">
+        <div class="row-main">
+          <span class="row-title">Modulating roughness and ripple dynamics in hexagonal boron nitride via defect engineering</span>
+          <span class="row-meta"><span class="row-type">期刊文章</span><span class="row-metatext">Hassan 等 · 2026 · The Journal of Physical Chemistry C</span></span>
+        </div>
+        <span class="row-pdf" aria-hidden="true">PDF</span>
+      </li>
+      <li class="row">
+        <div class="row-main">
+          <span class="row-title">Double-shock compression pathways from diamond to BC8 carbon</span>
+          <span class="row-meta"><span class="row-type">期刊文章</span><span class="row-metatext">Shi 等 · 2023 · Physical Review Letters</span></span>
+        </div>
+        <span class="row-pdf" aria-hidden="true">PDF</span>
+      </li>
+    </ul>
+
+    <span class="sr-only" id="live" role="status" aria-live="polite"></span>
+  </section>
+</main>
+
+<!-- 原型工具条：故意高对比、不属于面板设计语言 -->
+<div class="switcher" role="toolbar" aria-label="原型切换器">
+  <button class="sw-arrow" type="button" id="sw-prev" aria-label="上一个方案">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+  </button>
+  <span class="sw-kicker" aria-hidden="true">原型</span>
+  <span class="sw-label" id="sw-label" aria-live="polite">E · 胶囊 + 引导条（选定）</span>
+  <button class="sw-arrow" type="button" id="sw-next" aria-label="下一个方案">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+  </button>
+
+  <span class="sw-sep" aria-hidden="true"></span>
+  <span class="sw-group" role="group" aria-label="连接状态">
+    <button class="sw-opt sw-state" type="button" data-set-state="green" aria-pressed="true"><span class="sw-dot" style="background:#1a7f37"></span>已连接</button>
+    <button class="sw-opt sw-state" type="button" data-set-state="amber" aria-pressed="false"><span class="sw-dot" style="background:#b58a00"></span>未就绪</button>
+    <button class="sw-opt sw-state" type="button" data-set-state="red" aria-pressed="false"><span class="sw-dot" style="background:#b3261e"></span>连接失败</button>
+  </span>
+
+  <span class="sw-sep" aria-hidden="true"></span>
+  <span class="sw-group" role="group" aria-label="面板宽度">
+    <button class="sw-opt" type="button" data-set-w="320" aria-pressed="false">窄</button>
+    <button class="sw-opt" type="button" data-set-w="480" aria-pressed="true">中</button>
+    <button class="sw-opt" type="button" data-set-w="1000" aria-pressed="false">宽</button>
+  </span>
+
+  <span class="sw-sep" aria-hidden="true"></span>
+  <span class="sw-group" role="group" aria-label="明暗主题">
+    <button class="sw-opt" type="button" data-set-theme="light" aria-pressed="true">明</button>
+    <button class="sw-opt" type="button" data-set-theme="dark" aria-pressed="false">暗</button>
+  </span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* 方案顺序：选定的 E 在前，其余保留作对照。方向键即按此顺序循环。 */
+  var VARIANT_ORDER = ['E', 'A', 'B', 'C', 'D'];
+  var VARIANT_NAMES = {
+    E: '胶囊 + 引导条（选定）',
+    A: '状态胶囊',
+    B: '信号图标',
+    C: '边缘色条',
+    D: '引导展开条'
+  };
+  var STATES = {
+    green: {
+      label: '已连接',
+      tip: '已连接',
+      reason: 'Zotero 本地 API 正常响应（127.0.0.1:23119）。'
+    },
+    amber: {
+      label: '未就绪',
+      tip: 'Zotero 未运行，或本地 API 未开启',
+      reason: 'Zotero 未运行，或本地 API 未开启。'
+    },
+    red: {
+      label: '连接失败',
+      tip: '无法访问本机 Zotero',
+      reason: '无法访问本机 Zotero（127.0.0.1:23119 无响应）。'
+    }
+  };
+  var WIDTHS = [320, 480, 1000];
+  var THEMES = ['light', 'dark'];
+
+  var DEFAULTS = { variant: 'E', state: 'green', w: 480, theme: 'light' };
+  var ui = { variant: DEFAULTS.variant, state: DEFAULTS.state, w: DEFAULTS.w, theme: DEFAULTS.theme };
+
+  var root = document.documentElement;
+  var panel = document.getElementById('panel');
+  var live = document.getElementById('live');
+  var swLabel = document.getElementById('sw-label');
+  var popWrap = document.getElementById('pop-wrap');
+  var popToggle = document.getElementById('pop-toggle');
+  var popTitle = popWrap.querySelector('.pop-title');
+  var popReason = popWrap.querySelector('.pop-reason');
+  var stripWraps = document.querySelectorAll('.strip-wrap');
+  var stripTexts = document.querySelectorAll('.strip-text');
+
+  function normalizeVariant(value) {
+    var v = String(value || '').trim().toUpperCase();
+    return VARIANT_NAMES[v] ? v : null;
+  }
+  function normalizeState(value) {
+    var v = String(value || '').trim().toLowerCase();
+    return STATES[v] ? v : null;
+  }
+  function normalizeWidth(value) {
+    var n = parseInt(value, 10);
+    return WIDTHS.indexOf(n) >= 0 ? n : null;
+  }
+  function normalizeTheme(value) {
+    var v = String(value || '').trim().toLowerCase();
+    return THEMES.indexOf(v) >= 0 ? v : null;
+  }
+
+  function paramsFrom(input) {
+    var out = {};
+    var raw = String(input || '').replace(/^[?#]/, '');
+    if (raw === '') return out;
+    try {
+      new URLSearchParams(raw).forEach(function (value, key) { out[key] = value; });
+    } catch (err) {
+      /* 忽略坏参数 */
+    }
+    return out;
+  }
+
+  function readUrl() {
+    var next = {
+      variant: DEFAULTS.variant,
+      state: DEFAULTS.state,
+      w: DEFAULTS.w,
+      theme: DEFAULTS.theme
+    };
+    /* 依次读 query 和 fragment（file:// 下脚本可能只能写 fragment），后者覆盖前者。 */
+    var sources = [paramsFrom(location.search), paramsFrom(location.hash)];
+    for (var i = 0; i < sources.length; i++) {
+      var params = sources[i];
+      var variant = normalizeVariant(params.variant);
+      var state = normalizeState(params.state);
+      var width = normalizeWidth(params.w);
+      var theme = normalizeTheme(params.theme);
+      if (variant !== null) next.variant = variant;
+      if (state !== null) next.state = state;
+      if (width !== null) next.w = width;
+      if (theme !== null) next.theme = theme;
+    }
+    return next;
+  }
+
+  function writeUrl() {
+    var qs = 'variant=' + ui.variant + '&state=' + ui.state + '&w=' + ui.w + '&theme=' + ui.theme;
+    /* 不刷新页面。file:// 文档是 opaque origin，部分浏览器会拒绝 replaceState
+       改查询串，此时退回只改 fragment（同文档导航），两种形式都能被 readUrl 解析。 */
+    try {
+      history.replaceState(null, '', '?' + qs);
+      return;
+    } catch (err) { /* 尝试 fragment */ }
+    try {
+      history.replaceState(null, '', '#' + qs);
+      return;
+    } catch (err) { /* 最后退回同文档 hash 导航 */ }
+    try { location.replace('#' + qs); } catch (err) { /* 忽略 */ }
+  }
+
+  function setPressed(selector, attribute, value) {
+    var nodes = document.querySelectorAll(selector);
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].setAttribute('aria-pressed', String(nodes[i].getAttribute(attribute) === String(value)));
+    }
+  }
+
+  function render() {
+    var state = STATES[ui.state];
+
+    root.setAttribute('data-theme', ui.theme);
+    root.style.setProperty('--panel-w', ui.w + 'px');
+    panel.setAttribute('data-variant', ui.variant);
+    panel.setAttribute('data-state', ui.state);
+    panel.setAttribute('data-w', String(ui.w));
+
+    var labels = document.querySelectorAll('[data-bind="label"]');
+    for (var i = 0; i < labels.length; i++) labels[i].textContent = state.label;
+
+    var titled = document.querySelectorAll('[data-bind="title"]');
+    for (var k = 0; k < titled.length; k++) {
+      titled[k].setAttribute('title', state.tip);
+    }
+
+    popTitle.textContent = state.label;
+    popReason.textContent = state.reason;
+    popToggle.setAttribute('aria-label', '连接状态：' + state.label + '。' + state.reason);
+
+    /* 两个引导条共用同一段文案：D 的条（带圆点）只在 D 非绿色时出现，
+       E 的条（无圆点）只在 E 非绿色时出现。 */
+    for (var t = 0; t < stripTexts.length; t++) stripTexts[t].textContent = state.reason;
+    for (var u = 0; u < stripWraps.length; u++) {
+      var isEStrip = stripWraps[u].classList.contains('strip-wrap-e');
+      var stripAppears = ui.state !== 'green' && (isEStrip ? ui.variant === 'E' : ui.variant === 'D');
+      stripWraps[u].setAttribute('aria-hidden', stripAppears ? 'false' : 'true');
+    }
+
+    swLabel.textContent = ui.variant + ' · ' + VARIANT_NAMES[ui.variant];
+    live.textContent = '连接状态：' + state.label;
+
+    setPressed('.sw-state', 'data-set-state', ui.state);
+    setPressed('[data-set-w]', 'data-set-w', ui.w);
+    setPressed('[data-set-theme]', 'data-set-theme', ui.theme);
+  }
+
+  function commit() {
+    render();
+    writeUrl();
+  }
+
+  function setVariant(variant) {
+    if (!VARIANT_NAMES[variant] || ui.variant === variant) {
+      render();
+      return;
+    }
+    ui.variant = variant;
+    commit();
+  }
+
+  function cycleVariant(step) {
+    var index = VARIANT_ORDER.indexOf(ui.variant);
+    var next = (index + step + VARIANT_ORDER.length) % VARIANT_ORDER.length;
+    setVariant(VARIANT_ORDER[next]);
+  }
+
+  function closePop() {
+    popWrap.setAttribute('data-open', 'false');
+    popToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  /* --- 切换器绑定 --- */
+  document.getElementById('sw-prev').addEventListener('click', function () { cycleVariant(-1); });
+  document.getElementById('sw-next').addEventListener('click', function () { cycleVariant(1); });
+
+  var stateButtons = document.querySelectorAll('[data-set-state]');
+  for (var s = 0; s < stateButtons.length; s++) {
+    (function (button) {
+      button.addEventListener('click', function () {
+        var next = normalizeState(button.getAttribute('data-set-state'));
+        if (next === null || ui.state === next) return;
+        ui.state = next;
+        commit();
+      });
+    })(stateButtons[s]);
+  }
+
+  var widthButtons = document.querySelectorAll('[data-set-w]');
+  for (var w = 0; w < widthButtons.length; w++) {
+    (function (button) {
+      button.addEventListener('click', function () {
+        var next = normalizeWidth(button.getAttribute('data-set-w'));
+        if (next === null || ui.w === next) return;
+        ui.w = next;
+        commit();
+      });
+    })(widthButtons[w]);
+  }
+
+  var themeButtons = document.querySelectorAll('[data-set-theme]');
+  for (var t = 0; t < themeButtons.length; t++) {
+    (function (button) {
+      button.addEventListener('click', function () {
+        var next = normalizeTheme(button.getAttribute('data-set-theme'));
+        if (next === null || ui.theme === next) return;
+        ui.theme = next;
+        commit();
+      });
+    })(themeButtons[t]);
+  }
+
+  /* --- 浮层：悬停由 CSS 负责，点击可钉住 --- */
+  popToggle.addEventListener('click', function (event) {
+    event.stopPropagation();
+    var open = popWrap.getAttribute('data-open') === 'true';
+    popWrap.setAttribute('data-open', open ? 'false' : 'true');
+    popToggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+  });
+  document.addEventListener('click', function (event) {
+    if (popWrap.getAttribute('data-open') !== 'true') return;
+    if (popWrap.contains(event.target)) return;
+    closePop();
+  });
+
+  /* --- 按钮视觉反馈（原型：不触发真实检测） --- */
+  var busyButtons = document.querySelectorAll('[data-action]');
+  for (var b = 0; b < busyButtons.length; b++) {
+    (function (button) {
+      button.addEventListener('click', function () {
+        if (button.getAttribute('data-busy') === '1') return;
+        var action = button.getAttribute('data-action');
+        var original = button.textContent;
+        button.setAttribute('data-busy', '1');
+        button.disabled = true;
+        button.textContent = action === 'open' ? '正在打开…' : '检测中…';
+        window.setTimeout(function () {
+          button.textContent = original;
+          button.disabled = false;
+          button.removeAttribute('data-busy');
+        }, 1200);
+      });
+    })(busyButtons[b]);
+  }
+
+  /* --- 键盘：← / → 循环方案（输入框/可编辑区域聚焦时不拦截） --- */
+  function isTyping(target) {
+    if (!target || target.nodeType !== 1) return false;
+    if (target.isContentEditable) return true;
+    return /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+  }
+  window.addEventListener('keydown', function (event) {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isTyping(event.target)) return;
+    if (event.key === 'Escape') {
+      closePop();
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    cycleVariant(event.key === 'ArrowRight' ? 1 : -1);
+  });
+
+  /* --- URL 变化（前进/后退、手改 hash）时同步 --- */
+  function syncFromUrl() {
+    ui = readUrl();
+    render();
+  }
+  window.addEventListener('popstate', syncFromUrl);
+  window.addEventListener('hashchange', syncFromUrl);
+
+  /* 初始：从 URL 读参数（无参数用默认值），不主动改写地址栏。 */
+  ui = readUrl();
+  render();
+})();
+</script>
+</body>
+</html>
