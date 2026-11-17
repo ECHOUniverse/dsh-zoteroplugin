@@ -46,6 +46,20 @@ do the same on your behalf.
 - **UI languages** — Simplified Chinese and English, following the DSH host
   language.
 
+## Screenshots
+
+Real captures from DSH Desktop 0.2.2 with the plugin installed — light and
+dark themes, no mockups.
+
+![Searching the Zotero library in the DSH right-sidebar tab](docs/screenshots/library-search.png)
+*Search metadata or full text from the right-sidebar tab; the tab bar shows the Zotero connection status.*
+
+![PDF reader with an assistant highlight and the chat that produced it](docs/screenshots/pdf-highlight.png)
+*Ask the assistant to open a paper and highlight a passage — the quote lands in the PDF reader as a session highlight next to the chat.*
+
+![PDF reader in the dark theme](docs/screenshots/dark-pdf-highlight.png)
+*The same reader with the DSH dark theme; highlights, annotations, and page controls stay in place.*
+
 ## Requirements
 
 - DSH Desktop `>=0.2.1-rc.1 <0.3.0-0`

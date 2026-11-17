@@ -39,6 +39,19 @@ Zotero 文库——检索、条目详情、带注释与高亮的 PDF 阅读器�
   （服务端构造，平台白名单命令）。
 - **界面语言**——简体中文与英文，跟随 DSH 宿主语言。
 
+## 截图
+
+以下为 DSH 桌面版 0.2.2 安装本插件后的真实截图（浅色与深色主题），非原型图。
+
+![在 DSH 右栏标签中检索 Zotero 文库](docs/screenshots/library-search.png)
+*在右栏标签内按元数据或全文检索；标签栏同时显示 Zotero 连接状态。*
+
+![PDF 阅读器中的助手高亮与产生它的会话](docs/screenshots/pdf-highlight.png)
+*让助手打开论文并高亮段落，引文以会话高亮落在 PDF 阅读器中，与对话并排。*
+
+![深色主题下的 PDF 阅读器](docs/screenshots/dark-pdf-highlight.png)
+*同一阅读器在 DSH 深色主题下的效果；高亮、注释与翻页控件保持不变。*
+
 ## 要求
 
 - DSH 桌面版 `>=0.2.1-rc.1 <0.3.0-0`
