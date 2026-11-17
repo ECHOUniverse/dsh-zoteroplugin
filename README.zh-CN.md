@@ -8,7 +8,9 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/badge/npm-%40hanxu131%2Fdsh--zotero--0.2.0-CB3837.svg)](https://www.npmjs.com/package/@hanxu131/dsh-zotero)
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--zoteroplugin-181717.svg)](https://github.com/ECHOUniverse/dsh-zoteroplugin)
 [![DSH Desktop](https://img.shields.io/badge/DSH_Desktop-%E2%89%A5_0.2.1--rc.1%2C_%3C_0.3.0-blue.svg)](https://github.com/deepseek-ai/deepseek-harness)
+[![DeepSeek Harness Plugins](https://img.shields.io/badge/DeepSeek%20Harness%20Plugins-dsh--plugin-4d6bfe.svg)](https://github.com/topics/dsh-plugin)
 [![Zotero](https://img.shields.io/badge/Zotero-10%2B-CC2936.svg)](https://www.zotero.org/)
 
 面向 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)
@@ -56,7 +58,7 @@ dsh plugin --profile desktop add @hanxu131/dsh-zotero
 [cordis.patch.yml](cordis.patch.yml)）：
 
 ```bash
-dsh plugin --profile desktop add link:/path/to/zoteroplugin-dsh
+dsh plugin --profile desktop add link:/path/to/dsh-zoteroplugin
 ```
 
 安装后**完全退出并重启 DSH**，插件宿主半（Agent 工具与路由）才会装载。

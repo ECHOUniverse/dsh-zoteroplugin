@@ -4,7 +4,7 @@
 # Local API; the client half (lib/client.js) registers the right-sidebar tab.
 #
 # Install: dsh plugin --profile <name> add @hanxu131/dsh-zotero
-# Local:   dsh plugin --profile <name> add link:/path/to/zoteroplugin-dsh
+# Local:   dsh plugin --profile <name> add link:/path/to/dsh-zoteroplugin
 - insert:
     - id: zotero
       # Quoted because `@` is a reserved YAML indicator.
